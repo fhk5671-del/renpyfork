@@ -1,5 +1,5 @@
 param(
-    [string] $SdkRoot = "C:\Users\super\Dropbox\renpy-8.4.1-sdk",
+    [string] $SdkRoot = "C:\Users\super\Dropbox\renpy-8.4.1-rnx-sdk",
     [string] $LauncherExe = ""
 )
 
