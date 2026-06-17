@@ -50,6 +50,7 @@ init python in distribute:
     import plistlib
     import time
     import shutil
+    import renpy.custom_format as custom_format
 
     def py(s):
         """
@@ -985,7 +986,7 @@ fix_dlc("renios", "renios")
                 if not self.file_lists[arcname]:
                     continue
 
-                arcfn = arcname + ".rpa"
+                arcfn = arcname + custom_format.ARCHIVE_EXTENSION
                 arcpath = self.temp_filename(arcfn)
 
                 # Create new directories leading to the new archive file relative to the tmp root
@@ -1030,7 +1031,7 @@ fix_dlc("renios", "renios")
             if self.build["script_version"]:
 
                 if (not os.path.exists(os.path.join(self.project.path, "game", "script_version.rpy"))) and \
-                    (not os.path.exists(os.path.join(self.project.path, "game", "script_version.rpyc"))):
+                    (not os.path.exists(os.path.join(self.project.path, "game", "script_version" + renpy.script.COMPILED_SCRIPT_EXTENSION))):
 
                     script_version_txt = self.temp_filename("script_version.txt")
 
@@ -1251,7 +1252,9 @@ fix_dlc("renios", "renios")
                 else:
                     should_change_icon = True
 
-                src = os.path.join(config.renpy_base, src)
+                if not os.path.isabs(src):
+                    src = os.path.join(config.renpy_base, src)
+
                 tmp = self.temp_filename(tmp)
 
                 if should_change_icon and os.path.exists(icon_fn) and os.path.exists(src):
@@ -1265,7 +1268,12 @@ fix_dlc("renios", "renios")
                 if os.path.exists(tmp):
                     self.add_file(fl, dst, tmp)
 
-            write_exe("lib/py3-windows-x86_64/renpy.exe", self.exe, self.exe, windows)
+            renpy_exe = os.path.join(config.renpy_base, "lib", "py3-windows-x86_64", "renpy_host.exe")
+
+            if not os.path.exists(renpy_exe):
+                renpy_exe = "lib/py3-windows-x86_64/renpy.exe"
+
+            write_exe(renpy_exe, self.exe, self.exe, windows)
             write_exe("lib/py3-windows-x86_64/pythonw.exe", "lib/py3-windows-x86_64/pythonw.exe", "pythonw-64.exe", windows)
 
 
@@ -1831,12 +1839,20 @@ fix_dlc("renios", "renios")
 
     def update_old_game(project, reporter, compile):
         if compile:
-            reporter.info(_("Recompiling all rpy files into rpyc files..."))
-            project.launch([ "compile", "--keep-orphan-rpyc" ], wait=True)
+            reporter.info(_("Recompiling all script files into compiled script files..."))
+            project.launch([ "compile", "--keep-orphan-rsc" ], wait=True)
+
+        def compiled_script_filename(fn):
+            if fn.endswith("_ren.py"):
+                return fn[:-7] + renpy.script.COMPILED_SCRIPT_EXTENSION
+            elif fn.endswith(".rpym"):
+                return fn[:-5] + renpy.script.COMPILED_MODULE_EXTENSION
+            else:
+                return fn[:-4] + renpy.script.COMPILED_SCRIPT_EXTENSION
 
         files = [
-            fn + "c" for fn in project.script_files()
-            if fn.startswith("game/") and project.exists(fn + "c")]
+            compiled_script_filename(fn) for fn in project.script_files()
+            if fn.startswith("game/") and project.exists(compiled_script_filename(fn))]
         len_files = len(files)
 
         if not files:
@@ -1864,7 +1880,7 @@ fix_dlc("renios", "renios")
         shutil.copytree(TEMP_OLD_GAME_DIR, OLD_GAME_DIR)
 
     def update_old_game_command():
-        ap = renpy.arguments.ArgumentParser("Back-ups all rpyc files into old-game directory.")
+        ap = renpy.arguments.ArgumentParser("Backs up all compiled script files into old-game directory.")
         ap.add_argument("project", help="The path to the project directory.")
 
         args = ap.parse_args()

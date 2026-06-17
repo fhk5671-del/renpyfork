@@ -178,39 +178,6 @@ class File(object):
             offset += len(data)
             size -= len(data)
 
-    def scan_rpa(self, f, total_size):
-        """
-        Scans an RPA archive, segmenting it into the underlying files.
-        """
-
-        # Read the header.
-        l = f.read(40)
-        offset = int(l[8:24], 16)
-        key = int(l[25:33], 16)
-        f.seek(offset)
-        index = pickle.loads(zlib.decompress(f.read()))
-
-        # This is a list of offset, size tuples for each of the files
-        # in the archive. These will be sorted into the order the segments
-        # appear in the archive.
-        segments = []
-
-        for v in index.values():
-            for i in v:
-                segments.append((i[0] ^ key, i[1] ^ key))
-
-        segments.sort()
-
-        # Iterate through, adding a segment for each block in the .rpa.
-        pos = 0
-
-        for offset, size in segments:
-            self.scan_segments(f, pos, offset - pos)
-            self.scan_segments(f, offset, size)
-            pos = offset + size
-
-        self.scan_segments(f, pos, total_size - pos)
-
     def scan(self):
         """
         Separate the file into segments. This may be done in a content-aware
@@ -230,13 +197,6 @@ class File(object):
             f.seek(0, 2)
             size = f.tell()
             f.seek(0)
-
-            if self.name.endswith(".rpa") and start[:8] == b"RPA-3.0 ":
-                try:
-                    self.scan_rpa(f, size)
-                    return
-                except Exception:
-                    pass
 
             self.scan_segments(f, 0, size)
 

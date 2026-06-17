@@ -959,7 +959,7 @@ Paths
 
     A list of archive files that will be searched for images and other
     data. The entries in this should consist of strings giving the
-    base names of archive files, without the .rpa extension.
+    base names of archive files, without the .rnx extension.
 
     The archives are searched in the order they are found in this list.
     A file is taken from the first archive it is found in.
@@ -967,7 +967,7 @@ Paths
     At startup, Ren'Py will automatically populate this variable with
     the names of all archives found in the game directory, sorted in
     reverse ascii order. For example, if Ren'Py finds the files
-    :file:`data.rpa`, :file:`patch01.rpa`, and :file:`patch02.rpa`,
+    :file:`data.rnx`, :file:`patch01.rnx`, and :file:`patch02.rnx`,
     this variable will be populated with ``['patch02', 'patch01', 'data']``.
 
 .. var:: config.gamedir = ...

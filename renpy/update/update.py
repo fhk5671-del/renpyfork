@@ -283,18 +283,9 @@ class Update(object):
 
     def write_padding(self):
         """
-        Writes a file containing the padding for RPAs, so it's
-        not necessary to download a block file just for that.
+        This fork's custom archives do not write shared plaintext padding.
         """
-
-        padding = b"Made with Ren'Py."
-
-        fn = os.path.join(self.targetdir, "_padding.old.rpa")
-        with open(fn, "wb") as f:
-            f.write(padding)
-
-        f = common.File("_padding.old.rpa", data_filename=fn)
-        self.old_files.append(f)
+        return
 
     def scan_old_files(self):
         """

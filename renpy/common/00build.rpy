@@ -29,6 +29,7 @@ init -1500 python in build:
     from store import config, store
 
     import sys, os
+    import renpy.custom_format as custom_format
 
     def make_file_lists(s):
         """
@@ -79,7 +80,7 @@ init -1500 python in build:
         ( "**/.*", None),
         ( "**.old", None),
         ( "**.new", None),
-        ( "**.rpa", None),
+        ( "**" + custom_format.ARCHIVE_EXTENSION, None),
         ( "**.rpe", None),
         ( "**.rpe.py", None),
 
@@ -110,6 +111,7 @@ init -1500 python in build:
         # Ignore Ren'Py and renpy.exe.
         ( "lib/*/renpy", None),
         ( "lib/*/renpy.exe", None),
+        ( "lib/*/renpy_host.exe", None),
         ( "lib/*/pythonw.exe", None),
 
         # Ignore the wrong Python.
@@ -138,6 +140,9 @@ init -1500 python in build:
         ( "lib/**", "windows linux mac android ios"),
         ( renpy_sh, "linux mac"),
     ]))
+
+    for ext in custom_format.LEGACY_ARTIFACT_EXTENSIONS:
+        renpy_patterns.append(("**" + ext, None))
 
 
     def classify_renpy(pattern, groups):
@@ -274,7 +279,7 @@ init -1500 python in build:
         list of available archive names, which can be passed to
         :func:`build.classify`.
 
-        If one or more files are classified with `name`, `name`.rpa is
+        If one or more files are classified with `name`, `name` plus this fork's archive extension is
         built as an archive, and then distributed in packages including
         the `file_list` given here. ::
 
@@ -282,7 +287,7 @@ init -1500 python in build:
 
         If any file is included in the "secret" archive using the
         :func:`build.classify` function, the file will be included inside
-        the secret.rpa archive in the windows builds.
+        the secret archive in the windows builds.
 
         As with the :func:`build.classify` function, if the name given as
         `file_list` doesn't exist as a file list name, it is created and

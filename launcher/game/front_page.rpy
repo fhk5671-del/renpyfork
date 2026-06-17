@@ -301,7 +301,7 @@ label rmpersistent:
 label force_recompile:
 
     python hide:
-        interface.processing(_("Recompiling all rpy files into rpyc files..."))
+        interface.processing(_("Recompiling all script files into compiled script files..."))
         project.current.launch([ 'compile' ], wait=True)
 
     jump front_page

@@ -28,7 +28,7 @@ init python in archiver:
     import sys
     import random
     import glob
-    import zlib
+    import renpy.custom_format as custom_format
 
     from pickle import dumps, HIGHEST_PROTOCOL
 
@@ -46,11 +46,7 @@ init python in archiver:
             # The index to the file.
             self.index = _dict()
 
-            # A fixed key minimizes difference between archive versions.
-            self.key = 0x42424242
-
-            padding = b"RPA-3.0 XXXXXXXXXXXXXXXX XXXXXXXX\n"
-            self.f.write(padding)
+            self.f.write(custom_format.ARCHIVE_HEADER_PLACEHOLDER)
 
         def add(self, name, path):
             """
@@ -61,26 +57,25 @@ init python in archiver:
 
             with open(path, "rb") as df:
                 data = df.read()
+                usize = len(data)
+                data = custom_format.seal(data, custom_format.ARCHIVE_MEMBER_PURPOSE)
                 dlen = len(data)
-
-            # Pad.
-            padding = b"Made with Ren'Py."
-            self.f.write(padding)
 
             offset = self.f.tell()
 
             self.f.write(data)
 
-            self.index[name].append((offset ^ self.key, dlen ^ self.key, b""))
+            self.index[name].append((offset, dlen, usize))
 
         def close(self):
 
             indexoff = self.f.tell()
+            index = custom_format.seal(dumps(self.index, HIGHEST_PROTOCOL), custom_format.ARCHIVE_INDEX_PURPOSE)
 
-            self.f.write(zlib.compress(dumps(self.index, HIGHEST_PROTOCOL)))
+            self.f.write(index)
 
             self.f.seek(0)
-            self.f.write(b"RPA-3.0 %016x %08x\n" % (indexoff, self.key))
+            self.f.write(custom_format.ARCHIVE_HEADER % (indexoff, len(index)))
 
             self.f.close()
 

@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 PATH_IGNORE_RE = re.compile(r"(^|/)__pycache__(/|$)|(^|/)game/(saves|cache)(/|$)")
-FILE_EXT_IGNORE_RE = re.compile(r"\.(pyc|pyo|rpyc|rpymc|so|pyi)$")
+FILE_EXT_IGNORE_RE = re.compile(r"\.(pyc|pyo|rsc|rsm|so|pyi)$")
 FILE_NAME_IGNORE_RE = re.compile(r"(^|/)(log\.txt|errors\.txt|errors\.text|traceback\.txt)$")
 
 

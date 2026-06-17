@@ -149,9 +149,9 @@ The following flags may be used with any command:
     Forces all Python files to be recompiled, rather than read from
     :file:`game/cache/bytecode-*.rpyb`.
 
-.. option:: --keep-orphan-rpyc
+.. option:: --keep-orphan-rsc
 
-    If compiling, prevents Ren'Py from deleting :file:`.rpyc` files that are not associated with
+    If compiling, prevents Ren'Py from deleting :file:`.rsc` files that are not associated with
     a :file:`.rpy` or :file:`_ren.py` file of the same name.
 
 .. option:: --errors-in-editor
@@ -289,7 +289,7 @@ Quits the game immediately.
 Compile
 -------
 
-Compiles the game, creating .rpyc files from .rpy files. The
+Compiles the game, creating .rsc files from .rpy files. The
 equivalent of the "Force Recompile" button in the Ren'Py launcher.
 
 .. tabs::
@@ -298,17 +298,17 @@ equivalent of the "Force Recompile" button in the Ren'Py launcher.
 
         .. code-block:: bash
 
-            ./renpy.sh <basedir> compile [--keep-orphan-rpyc]
+            ./renpy.sh <basedir> compile [--keep-orphan-rsc]
 
     .. tab:: Windows
 
         .. code-block:: bat
 
-            .\lib\py3-windows-x86_64\python.exe renpy.py <basedir> compile [--keep-orphan-rpyc]
+            .\lib\py3-windows-x86_64\python.exe renpy.py <basedir> compile [--keep-orphan-rsc]
 
-.. option:: --keep-orphan-rpyc
+.. option:: --keep-orphan-rsc
 
-    Prevents Ren'Py from deleting :file:`.rpyc` files that are not associated with
+    Prevents Ren'Py from deleting :file:`.rsc` files that are not associated with
     a :file:`.rpy` or :file:`_ren.py` file of the same name.
 
 
@@ -543,9 +543,9 @@ Build and Distribution
 
 .. note::
 
-    As part of the build process, Ren'Py will create .rpyc files that contain
+    As part of the build process, Ren'Py will create .rsc files that contain
     information that load the game. A continuous integration system should
-    preserve these .rpyc files after a build, and supply them to the next
+    preserve these .rsc files after a build, and supply them to the next
     build, either directly or in the old-game directory. Failure to do so
     may result in a game that can't load saves.
 
@@ -1189,7 +1189,7 @@ This can only be done when the launcher is not running.
 Update Old Game
 ---------------
 
-Copies .rpyc files from :file:`<basedir>/game` to :file:`<basedir>/old-game`.
+Copies .rsc files from :file:`<basedir>/game` to :file:`<basedir>/old-game`.
 
 .. tabs::
 

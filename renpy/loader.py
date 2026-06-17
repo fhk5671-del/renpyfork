@@ -22,6 +22,7 @@
 from typing import Iterable, Literal, NamedTuple
 
 import renpy
+import renpy.custom_format as custom_format
 import os
 import os.path
 import sys
@@ -139,101 +140,34 @@ class ArchiveHandlers:
 archive_handlers = ArchiveHandlers()
 
 
-class RPAv3ArchiveHandler(object):
+class RNXArchiveHandler(object):
     """
-    Archive handler handling RPAv3 archives.
+    Archive handler handling this fork's RNX archives.
     """
 
-    archive_extension = ".rpa"
+    archive_extension = custom_format.ARCHIVE_EXTENSION
 
     @staticmethod
     def get_supported_extensions():
-        return [".rpa"]
+        return [custom_format.ARCHIVE_EXTENSION]
 
     @staticmethod
     def get_supported_headers():
-        return [b"RPA-3.0 "]
+        return [custom_format.ARCHIVE_MAGIC]
 
     @staticmethod
     def read_index(infile):
-        l = infile.read(40)
+        l = infile.read(len(custom_format.ARCHIVE_HEADER_PLACEHOLDER))
         offset = int(l[8:24], 16)
-        key = int(l[25:33], 16)
+        length = int(l[25:41], 16)
         infile.seek(offset)
-        index = loads(zlib.decompress(infile.read()))
-
-        def start_to_bytes(s):
-            if not s:
-                return b""
-
-            if not isinstance(s, bytes):
-                s = s.encode("latin-1")
-
-            return s
-
-        # Deobfuscate the index.
-
-        for k in index.keys():
-            if len(index[k][0]) == 2:
-                index[k] = [(offset ^ key, dlen ^ key) for offset, dlen in index[k]]
-            else:
-                index[k] = [(offset ^ key, dlen ^ key, start_to_bytes(start)) for offset, dlen, start in index[k]]
-
-        return index
+        return loads(custom_format.open_sealed(infile.read(length), custom_format.ARCHIVE_INDEX_PURPOSE))
 
 
-archive_handlers.append(RPAv3ArchiveHandler)
+archive_handlers.append(RNXArchiveHandler)
 
 
-class RPAv2ArchiveHandler(object):
-    """
-    Archive handler handling RPAv2 archives.
-    """
-
-    archive_extension = ".rpa"
-
-    @staticmethod
-    def get_supported_extensions():
-        return [".rpa"]
-
-    @staticmethod
-    def get_supported_headers():
-        return [b"RPA-2.0 "]
-
-    @staticmethod
-    def read_index(infile):
-        l = infile.read(24)
-        offset = int(l[8:], 16)
-        infile.seek(offset)
-        index = loads(zlib.decompress(infile.read()))
-
-        return index
-
-
-archive_handlers.append(RPAv2ArchiveHandler)
-
-
-class RPAv1ArchiveHandler(object):
-    """
-    Archive handler handling RPAv1 archives.
-    """
-
-    archive_extension = ".rpa"
-
-    @staticmethod
-    def get_supported_extensions():
-        return [".rpi"]
-
-    @staticmethod
-    def get_supported_headers():
-        return [b"\x78\x9c"]
-
-    @staticmethod
-    def read_index(infile):
-        return loads(zlib.decompress(infile.read()))
-
-
-archive_handlers.append(RPAv1ArchiveHandler)
+# Legacy RPA handlers are intentionally not registered by this fork.
 
 
 def index_files():
@@ -587,6 +521,14 @@ def load_from_archive(name):
             if len(t) == 2:
                 offset, dlen = t
                 start = b""
+            elif len(t) == 3:
+                offset, dlen, _usize = t
+                with open(afn, "rb") as f:
+                    f.seek(offset)
+                    member = custom_format.open_sealed(f.read(dlen), custom_format.ARCHIVE_MEMBER_PURPOSE)
+
+                rv = RWopsIO.from_buffer(member, name=name)
+                return io.BufferedReader(rv)
             else:
                 offset, dlen, start = t
 

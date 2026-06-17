@@ -22,11 +22,11 @@ personal style : some game creators prefer to have small files (like one
 per event, or one per day), while others prefer to have one big script.
 
 To speed up loading time, Ren'Py will compile the :file:`.rpy` files into
-:file:`.rpyc` files when it starts up. When a :file:`.rpy` file is changed, the
-:file:`.rpyc` file will be updated when Ren'Py starts up. However, if a
-:file:`.rpyc` file exists without a corresponding :file:`.rpy` file, the
-:file:`.rpyc` file will be used. This can lead to problems if a :file:`.rpy`
-file is deleted, or renamed, or moved, without deleting the :file:`.rpyc`
+:file:`.rsc` files when it starts up. When a :file:`.rpy` file is changed, the
+:file:`.rsc` file will be updated when Ren'Py starts up. However, if a
+:file:`.rsc` file exists without a corresponding :file:`.rpy` file, the
+:file:`.rsc` file will be used. This can lead to problems if a :file:`.rpy`
+file is deleted, or renamed, or moved, without deleting the :file:`.rsc`
 file : the script it contains will still get executed.
 
 Filenames must begin with a letter or number, but may not begin with
@@ -53,8 +53,8 @@ example, if your base directory is :file:`renpygames/HelloWorld`, your game
 directory will be :file:`renpygames/HelloWorld/game`.
 
 The game directory contains all the files used by the game. It, including all
-subdirectories, is scanned for :file:`.rpy` and :file:`.rpyc` files, and those
-are combined to form the game script. It is scanned for :file:`.rpa` archive
+subdirectories, is scanned for :file:`.rpy` and :file:`.rsc` files, and those
+are combined to form the game script. It is scanned for :file:`.rnx` archive
 files, and those are automatically used by the game. Finally, when Ren'Py takes
 or considers a path to a file, the path is (with very few exceptions) relative
 to the game directory (but note that :var:`config.searchpath` can change this).

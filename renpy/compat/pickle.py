@@ -414,7 +414,7 @@ def dumps(o: object, highest=False, bad_reduction_name: str | None = None) -> by
 
 
 # The python AST module changed significantly between python 2 and 3. Old-style
-# screenlang support records raw python ast nodes into the rpyc data, making these
+# screenlang support records raw python ast nodes into compiled script data, making these
 # impossible to load normally. This dict contains mappings of nodes that need to be
 # modified to wrapper classes with a custom __setstate__ implementation that will
 # cause the pickle machinery to do the right thing.

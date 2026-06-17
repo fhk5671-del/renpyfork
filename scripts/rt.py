@@ -105,7 +105,7 @@ def new_command(args):
 
     (p / "project.json").unlink()
     (p / "game" / "guisupport.rpy").unlink()
-    (p / "game" / "guisupport.rpyc").unlink()
+    (p / "game" / "guisupport.rsc").unlink()
 
     select(p)
     edit_command(None)

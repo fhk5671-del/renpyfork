@@ -74,8 +74,8 @@ def load_module(name, **kwargs):
 
     This loads the Ren'Py module named name. A Ren'Py module consists of Ren'Py script
     that is loaded into the usual (store) namespace, contained in a file named
-    name.rpym or name.rpymc. If a .rpym file exists, and is newer than the
-    corresponding .rpymc file, it is loaded and a new .rpymc file is created.
+    name.rpym or a compiled module file. If a .rpym file exists, and is newer than the
+    corresponding compiled module file, it is loaded and a new compiled module file is created.
 
     All of the init blocks (and other init-phase code) in the module are run
     before this function returns. An error is raised if the module name cannot

@@ -142,9 +142,10 @@ class ArgumentParser(argparse.ArgumentParser):
         )
 
         self.add_argument(
-            "--keep-orphan-rpyc",
+            "--keep-orphan-rsc",
             action="store_true",
-            help="Prevents the compile command from deleting orphan rpyc files.",
+            dest="keep_orphan_rpyc",
+            help="Prevents the compile command from deleting orphan compiled script files.",
         )
 
         self.add_argument("--lint", action="store_true", dest="lint", help=argparse.SUPPRESS)

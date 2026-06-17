@@ -65,5 +65,5 @@ expected to be forward or backwards compatible.
 
 An incorrect :file:`skin.rpy` file could prevent the launcher from
 starting. To fix it, you'll need to remove :file:`skin.rpy` and
-:file:`skin.rpyc` from the launcher's game directory, start the launcher, and
+:file:`skin.rsc` from the launcher's game directory, start the launcher, and
 then put them back.

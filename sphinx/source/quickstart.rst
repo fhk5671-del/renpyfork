@@ -705,7 +705,7 @@ The game folder in the created project includes below folders and files.
     You can also add or delete any :file:`.rpy`. See :doc:`language_basics` for
     more details.
 
-**\*.rpyc**
+**\*.rsc**
     Those files are result of compiling each :file:`.rpy` files to reduce loading time.
     You don't need to edit those files without deleting the corresponding :file:`.rpy`
     file. See :doc:`language_basics` for more details.

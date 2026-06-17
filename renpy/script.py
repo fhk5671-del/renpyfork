@@ -31,10 +31,10 @@ import os
 import difflib
 import time
 import struct
-import zlib
 import shutil
 
 import renpy
+import renpy.custom_format as custom_format
 
 from renpy.compat.pickle import loads, dumps
 
@@ -42,11 +42,14 @@ from renpy.compat.pickle import loads, dumps
 # The version of the dumped script.
 script_version = renpy.script_version
 
-# Change this to force a recompile of RPYC files when required, if the .rpy file exists.
-RPYC_MAGIC = b"_2025-07-06"
+# Change this to force a recompile of compiled script files when required, if the .rpy file exists.
+RPYC_MAGIC = b"_rnx_2026-06-17"
 
-# A string at the start of each rpycv2 file.
-RPYC2_HEADER = b"RENPY RPC2"
+# A string at the start of each compiled script file.
+RPYC2_HEADER = custom_format.COMPILED_SCRIPT_HEADER
+
+COMPILED_SCRIPT_EXTENSION = custom_format.COMPILED_SCRIPT_EXTENSION
+COMPILED_MODULE_EXTENSION = custom_format.COMPILED_MODULE_EXTENSION
 
 # Kept for backwards compatibility.
 BYTECODE_FILE = renpy.python.CompileCache.BYTECODE_FILE
@@ -149,14 +152,14 @@ class Script(object):
 
         self.scan_script_files()
 
-        # If recompiling everything, remove orphan .rpyc files.
-        # Otherwise, will fail in case orphan .rpyc have same
+        # If recompiling everything, remove orphan compiled script files.
+        # Otherwise, will fail in case orphan compiled scripts have same
         # labels as in other scripts (usually happens on script rename).
         if (renpy.game.args.command == "compile") and not (renpy.game.args.keep_orphan_rpyc):
 
             self.clean_script_files()
 
-            # Reindex files so that .rpyc's are cleared out.
+            # Reindex files so that stale compiled scripts are cleared out.
             renpy.loader.index_files()
             self.scan_script_files()
 
@@ -187,7 +190,7 @@ class Script(object):
         if renpy.mobile:
             return None
 
-        for i in ["script_version.txt", "script_version.rpy", "script_version.rpyc"]:
+        for i in ["script_version.txt", "script_version.rpy", "script_version" + COMPILED_SCRIPT_EXTENSION]:
             if renpy.loader.loadable(i):
                 return None
 
@@ -275,8 +278,8 @@ class Script(object):
                 fn = fn[:-4]
                 target = script_files
 
-            elif fn.endswith(".rpyc"):
-                fn = fn[:-5]
+            elif fn.endswith(COMPILED_SCRIPT_EXTENSION):
+                fn = fn[: -len(COMPILED_SCRIPT_EXTENSION)]
                 target = script_files
 
             elif fn.endswith(".rpym"):
@@ -285,8 +288,8 @@ class Script(object):
 
                 fn = fn[:-5]
                 target = module_files
-            elif fn.endswith(".rpymc"):
-                fn = fn[:-6]
+            elif fn.endswith(COMPILED_MODULE_EXTENSION):
+                fn = fn[: -len(COMPILED_MODULE_EXTENSION)]
                 target = module_files
             else:
                 continue
@@ -323,7 +326,7 @@ class Script(object):
 
     def clean_script_files(self):
         """
-        Delete .rpyc files that have no corresponding .rpy or _ren.py file.
+        Delete compiled script files that have no corresponding .rpy or _ren.py file.
         """
 
         for fn, dn in self.script_files:
@@ -334,10 +337,10 @@ class Script(object):
                 os.path.join(dn, fn + "_ren.py")
             ):
                 try:
-                    name = os.path.join(dn, fn + ".rpyc")
+                    name = os.path.join(dn, fn + COMPILED_SCRIPT_EXTENSION)
                     os.rename(name, name + ".bak")
                 except OSError:
-                    # This perhaps shouldn't happen since either .rpy or .rpyc should exist
+                    # This perhaps shouldn't happen since either source or compiled script should exist
                     pass
 
     def script_filter(self, fn, dir):
@@ -449,7 +452,7 @@ class Script(object):
 
             self.loaded_scripts.add((fn, dir))
 
-            self.load_appropriate_file(".rpyc", ["_ren.py", ".rpy"], dir, fn, initcode)
+            self.load_appropriate_file(COMPILED_SCRIPT_EXTENSION, ["_ren.py", ".rpy"], dir, fn, initcode)
 
         if skipped:
             renpy.display.log.write("{} script files skipped.".format(skipped))
@@ -476,7 +479,7 @@ class Script(object):
         fn, dir = files[0]
         initcode = []
 
-        self.load_appropriate_file(".rpymc", [".rpym"], dir, fn, initcode)
+        self.load_appropriate_file(COMPILED_MODULE_EXTENSION, [".rpym"], dir, fn, initcode)
 
         if renpy.parser.report_parse_errors():
             raise SystemExit(-1)
@@ -634,14 +637,17 @@ class Script(object):
         # Take the translations.
         self.translator.take_translates(all_stmts)
 
-        # Fix the filename for a renamed .rpyc file.
+        # Fix the filename for a renamed compiled script file.
         if filename is not None:
             filename = renpy.lexer.elide_filename(filename)
-            if filename[-1] == "c":
-                filename = filename[:-1]
+            source_filename = filename
 
-            if not all_stmts[0].filename.lower().endswith(filename.lower()):
-                filename += "c"
+            if source_filename.endswith(COMPILED_SCRIPT_EXTENSION):
+                source_filename = source_filename[: -len(COMPILED_SCRIPT_EXTENSION)] + ".rpy"
+            elif source_filename.endswith(COMPILED_MODULE_EXTENSION):
+                source_filename = source_filename[: -len(COMPILED_MODULE_EXTENSION)] + ".rpym"
+
+            if not all_stmts[0].filename.lower().endswith(source_filename.lower()):
 
                 for i in all_stmts:
                     old_name = i.name
@@ -728,7 +734,7 @@ class Script(object):
 
     def write_rpyc_header(self, f):
         """
-        Writes an empty version 2 .rpyc header to the open binary file `f`.
+        Writes an empty compiled script header to the open binary file `f`.
         """
 
         f.write(RPYC2_HEADER)
@@ -738,14 +744,14 @@ class Script(object):
 
     def write_rpyc_data(self, f, slot, data):
         """
-        Writes data into `slot` of a .rpyc file. The data should be a binary
-        string, and is compressed before being written.
+        Writes data into `slot` of a compiled script file. The data should be a
+        binary string, and is wrapped before being written.
         """
 
         f.seek(0, 2)
 
         start = f.tell()
-        data = zlib.compress(data, 3)
+        data = custom_format.seal(data, custom_format.COMPILED_SCRIPT_PURPOSE)
         f.write(data)
 
         f.seek(len(RPYC2_HEADER) + 12 * (slot - 1), 0)
@@ -755,7 +761,7 @@ class Script(object):
 
     def write_rpyc_md5(self, f, digest):
         """
-        Writes the md5 to the end of a .rpyc file.
+        Writes the md5 to the end of a compiled script file.
         """
 
         f.seek(0, 2)
@@ -763,8 +769,8 @@ class Script(object):
 
     def read_rpyc_data(self, f, slot):
         """
-        Reads the binary data from `slot` in a .rpyc (v1 or v2) file. Returns
-        the data if the slot exists, or None if the slot does not exist.
+        Reads the binary data from `slot` in a compiled script file. Returns the
+        data if the slot exists, or None if the slot does not exist.
         """
 
         # f.seek(0)
@@ -772,17 +778,9 @@ class Script(object):
 
         # header = f.read(len(RPYC2_HEADER))
 
-        # Legacy path.
         if header_data[: len(RPYC2_HEADER)] != RPYC2_HEADER:
-            if slot != 1:
-                return None
+            return None
 
-            f.seek(0)
-            data = f.read()
-
-            return zlib.decompress(data)
-
-        # RPYC2 path.
         pos = len(RPYC2_HEADER)
 
         while True:
@@ -799,13 +797,13 @@ class Script(object):
         f.seek(start)
         data = f.read(length)
 
-        return zlib.decompress(data)
+        return custom_format.open_sealed(data, custom_format.COMPILED_SCRIPT_PURPOSE)
 
     def static_transforms(self, stmts):
         """
         This performs transformations on the script that can be performed
         statically. When possible, these transforms are stored in slot 2
-        of the rpyc file.
+        of the compiled script file.
         """
 
         # Generate translate nodes.
@@ -827,11 +825,14 @@ class Script(object):
                 fullfn = dir + "/" + fn
 
                 if fn.endswith("_ren.py"):
-                    rpycfn = fullfn[:-7] + ".rpyc"
-                    oldrpycfn = olddir + "/" + fn[:-7] + ".rpyc"
+                    rpycfn = fullfn[:-7] + COMPILED_SCRIPT_EXTENSION
+                    oldrpycfn = olddir + "/" + fn[:-7] + COMPILED_SCRIPT_EXTENSION
+                elif fn.endswith(".rpym"):
+                    rpycfn = fullfn[:-5] + COMPILED_MODULE_EXTENSION
+                    oldrpycfn = olddir + "/" + fn[:-5] + COMPILED_MODULE_EXTENSION
                 else:
-                    rpycfn = fullfn + "c"
-                    oldrpycfn = olddir + "/" + fn + "c"
+                    rpycfn = fullfn[:-4] + COMPILED_SCRIPT_EXTENSION
+                    oldrpycfn = olddir + "/" + fn[:-4] + COMPILED_SCRIPT_EXTENSION
 
                 stmts = renpy.parser.parse(fullfn)
 
@@ -850,7 +851,7 @@ class Script(object):
                     self.record_pycode = False
                     self.all_pyexpr = None
 
-                    # See if we have a corresponding .rpyc file. If so, then
+                    # See if we have a corresponding compiled script file. If so, then
                     # we want to try to upgrade our .rpy file with it.
                     try:
                         with open(mergefn, "rb") as rpycf:
@@ -872,14 +873,14 @@ class Script(object):
 
                 pickle_data_before_static_transforms = dumps(
                     (data, stmts),
-                    bad_reduction_name=f"<{fn} rpyc data>",
+                    bad_reduction_name=f"<{fn} compiled script data>",
                 )
 
                 self.static_transforms(stmts)
 
                 pickle_data_after_static_transforms = dumps(
                     (data, stmts),
-                    bad_reduction_name=f"<{fn} transformed rpyc data>",
+                    bad_reduction_name=f"<{fn} transformed compiled script data>",
                 )
 
                 if not renpy.macapp:
@@ -900,7 +901,7 @@ class Script(object):
 
                 self.loaded_rpy = True
 
-            elif fn.endswith(".rpyc") or fn.endswith(".rpymc"):
+            elif fn.endswith(COMPILED_SCRIPT_EXTENSION) or fn.endswith(COMPILED_MODULE_EXTENSION):
                 data = None
                 stmts = None
 
@@ -965,7 +966,7 @@ class Script(object):
 
         renpy.game.exception_info = "While loading the script."
 
-        # This can only be a .rpyc file, since we're loading it
+        # This can only be a compiled script file, since we're loading it
         # from an archive.
         if dir is None:
             rpyfn = fn + source
@@ -981,7 +982,7 @@ class Script(object):
 
         else:
             # Otherwise, we're loading from disk. So we need to decide if
-            # we want to load the rpy or the rpyc file.
+            # we want to load the source or compiled script file.
             rpycfn = dir + "/" + fn + compiled
             rpyfn = None  # prevent the spurious warning.
             rpydigest = None
@@ -1074,7 +1075,7 @@ class Script(object):
         elif self.key != data["key"]:
             raise Exception(
                 fn
-                + " does not share a key with at least one .rpyc file. To fix, delete all .rpyc files, or rerun Ren'Py with the --lock option."
+                + " does not share a key with at least one compiled script file. To fix, delete all compiled script files, or rerun Ren'Py with the --lock option."
             )
 
         self.finish_load(stmts, initcode, filename=lastfn)  # type: ignore

@@ -158,7 +158,7 @@ Files can also be classified in archives. By default, the "archive"
 archive is declared:
 
 archive
-    These files will be included in the archive.rpa archive.
+    These files will be included in the archive.rnx archive.
 
 The set of archives can also be expanded, using the :func:`build.archive`
 function.
@@ -233,7 +233,7 @@ Ren'Py supports combining files into a simple archive format. While
 not very secure, this protects files from casual copying.
 
 By default, all files classified into the "archive" file list will be
-placed in an archive.rpa archive, which is included in the all file
+placed in an archive.rnx archive, which is included in the all file
 list.
 
 By calling build.archive, it's possible to declare a new archives and
@@ -241,8 +241,8 @@ the file lists they will be included in. (It's rare to use anything
 but the all file list, however.) To use an archive, classify files
 into a list with its name.
 
-For example, the following will archive images in :file:`images.rpa`, and
-game scripts into :file:`scripts.rpa`::
+For example, the following will archive images in :file:`images.rnx`, and
+game scripts into :file:`scripts.rnx`::
 
     # Declare two archives.
     build.archive("scripts", "all")
@@ -250,7 +250,7 @@ game scripts into :file:`scripts.rpa`::
 
     # Put script files into the scripts archive.
     build.classify("game/**.rpy", "scripts")
-    build.classify("game/**.rpyc", "scripts")
+    build.classify("game/**.rsc", "scripts")
 
     # Put images into the images archive.
     build.classify("game/**.jpg", "images")
@@ -267,40 +267,40 @@ exist until after you're gone.
 The Old-game Directory
 ----------------------
 
-Ren'Py uses compiled script files (called `.rpyc` files) to run your game quickly.
+Ren'Py uses compiled script files (called `.rsc` files) to run your game quickly.
 These files also store important details, like unique IDs for each line of dialogue
 or scene, that save files rely on. When a game is updated and `.rpy` scripts change,
-Ren'Py updates or creates accompanying `.rpyc` files when the game is launched.
+Ren'Py updates or creates accompanying `.rsc` files when the game is launched.
 
-This updating nature of `.rpyc` files can create a challenge for developers who
+This updating nature of `.rsc` files can create a challenge for developers who
 are making multiple releases, like when a game is distributed through early access
 or platforms like Patreon, or are working on large, multi-developer games. During
 development, it's easy to make a series of changes to an `.rpy` file that causes the
-resulting `.rpyc` file to have different IDs than the ones used in your current stable
+resulting `.rsc` file to have different IDs than the ones used in your current stable
 release. For teams, this is an even larger challenge because multiple developers might
 edit the same `.rpy`.
-Without a single `.rpyc` file as the definite source, how can Ren'Py preserve its IDs?
+Without a single `.rsc` file as the definite source, how can Ren'Py preserve its IDs?
 
 To keep these changes from breaking save game compatibility, developers can use the
 `old-game`-directory. This special folder, which sits next to the `game`-directory in
-your project folder, lets you save a copy of the `.rpyc` files from your previous release.
-Its structure should match the `game`-directory. For example, move `game/scripts/day1.rpyc`
-to `old-game/scripts/day1.rpyc`. Files in `old-game` that aren't `.rpyc` files are ignored.
+your project folder, lets you save a copy of the `.rsc` files from your previous release.
+Its structure should match the `game`-directory. For example, move `game/scripts/day1.rsc`
+to `old-game/scripts/day1.rsc`. Files in `old-game` that aren't `.rsc` files are ignored.
 
-When you have an `old-game`-directory with `.rpyc` files from your last release, Ren'Py
-uses them to help create new `.rpyc` files for changed `.rpy` scripts. It keeps the same
+When you have an `old-game`-directory with `.rsc` files from your last release, Ren'Py
+uses them to help create new `.rsc` files for changed `.rpy` scripts. It keeps the same
 IDs for parts of your script that haven't changed, so older save files can still load properly.
 
 **How to make the most of the `old-game`-directory:**
 
-* When launching the game, if an `.rpy` file has changed and there's a matching `.rpyc` file in `old-game`, Ren'Py uses that `.rpyc` file to update the one in `game`. This keeps its IDs consistent with your last release for maximum save compatibility.
-* Before building a new release, enable "Force Recompile" on the build-page of the Ren'Py SDK, and click "Update old-game" before pressing "Build". This recompiles all `.rpyc` files using the ones in `old-game` as a starting point, then updates `old-game` with these new, stable `.rpyc` files for your next release.
-* If you've already released your game, you can still benefit from `old-game` by copying the `.rpyc` files from your latest release's game directory into your project's `old-game` directory, matching the same folder structure.
+* When launching the game, if an `.rpy` file has changed and there's a matching `.rsc` file in `old-game`, Ren'Py uses that `.rsc` file to update the one in `game`. This keeps its IDs consistent with your last release for maximum save compatibility.
+* Before building a new release, enable "Force Recompile" on the build-page of the Ren'Py SDK, and click "Update old-game" before pressing "Build". This recompiles all `.rsc` files using the ones in `old-game` as a starting point, then updates `old-game` with these new, stable `.rsc` files for your next release.
+* If you've already released your game, you can still benefit from `old-game` by copying the `.rsc` files from your latest release's game directory into your project's `old-game` directory, matching the same folder structure.
 
-More information about how .rpyc files help with loading saves into changed
+More information about how compiled script files help with loading saves into changed
 games can be found at:
 
-* `Under the hood: .rpyc files <https://www.patreon.com/posts/under-hood-rpyc-23035810>`_
+* `Under the hood: compiled script files <https://www.patreon.com/posts/under-hood-rpyc-23035810>`_
 * `Ren'Py developer update: February 2021 <https://www.patreon.com/posts/renpy-developer-48146908>`_
 
 

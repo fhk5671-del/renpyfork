@@ -226,6 +226,8 @@ init -1 python hide:
 # we build Ren'Py distributions.)
 init python:
 
+    import renpy.custom_format as custom_format
+
     # We're building Ren'Py tonight.
     build.renpy = True
 
@@ -317,7 +319,7 @@ init python:
     def source_and_binary(pattern, source="source", binary="binary", py=True, so=False):
         """
         Classifies source and binary files beginning with `pattern`.
-        .pyo, .rpyc, .rpycm, and .rpyb go into binary, everything
+            .pyo, compiled script files, and .rpyb go into binary, everything
         else but .pyi files go into source.
         """
 
@@ -353,8 +355,11 @@ init python:
         build.classify_renpy(pattern + "/**.pyx", "source_only")
         build.classify_renpy(pattern + "/**.pxd", "source_only")
 
-        build.classify_renpy(pattern + "/**.rpyc", binary)
-        build.classify_renpy(pattern + "/**.rpymc", binary)
+        build.classify_renpy(pattern + "/**" + renpy.script.COMPILED_SCRIPT_EXTENSION, binary)
+        build.classify_renpy(pattern + "/**" + renpy.script.COMPILED_MODULE_EXTENSION, binary)
+
+        for ext in custom_format.LEGACY_ARTIFACT_EXTENSIONS:
+            build.classify_renpy(pattern + "/**" + ext, None)
 
         build.classify_renpy(pattern + "/**/" + renpy.script.BYTECODE_FILE, binary)
         build.classify_renpy(pattern + "/**/cache/bytecode-*.rpyb", None)

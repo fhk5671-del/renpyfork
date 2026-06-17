@@ -397,7 +397,7 @@ def main():
     # Set up error handling.
     renpy.exports.load_module("_errorhandling")
 
-    if renpy.exports.loadable("tl/None/common.rpym") or renpy.exports.loadable("tl/None/common.rpymc"):
+    if renpy.exports.loadable("tl/None/common.rpym") or renpy.exports.loadable("tl/None/common" + renpy.script.COMPILED_MODULE_EXTENSION):
         renpy.exports.load_module("tl/None/common")
 
     renpy.config.init_system_styles()

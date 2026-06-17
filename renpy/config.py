@@ -557,7 +557,7 @@ longpress_vibrate = 0.1
 statement_callbacks = []
 
 # A list of file extensions that are blacklisted by autoreload.
-autoreload_blacklist = [".rpyc", ".rpymc", ".rpyb", ".pyc", ".pyo"]
+autoreload_blacklist = [".rsc", ".rsm", ".rpyb", ".pyc", ".pyo"]
 
 # A list of python modules that should be reloaded when appropriate.
 reload_modules = []
