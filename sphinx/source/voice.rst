@@ -85,6 +85,35 @@ the corresponding line is shown, Ren'Py will look for the file
 :file:`voice/demo_minigame_03fc91ef.ogg`. If the file exists, Ren'Py will
 play it.
 
+.. _voice-manifest:
+
+Voice Manifest
+--------------
+
+Ren'Py also includes an optional source-key voice manifest workflow for games
+that need profile-specific generated voice lines. This does not use
+:file:`dialogue.tab` as the main artifact. Instead, the command reads script
+files, expands configured voice profiles, writes :file:`voice_lines.csv` and
+:file:`voice_lines.json`, and writes a runtime :file:`voice_lookup.json` keyed
+by ``source_key`` and profile.
+
+The command can be run from the project directory::
+
+    voice_manifest --config voice_manifest.json
+
+The configuration may define ``script_files``, ``profiles`` or profile
+``dimensions``, ``default_profile``, ``speaker_names``, and ``audio_pattern``.
+Inline slash tags such as ``/tired/`` are stripped from visible text and
+converted to TTS text using :var:`config.voice_manifest_tts_tag_format`, which
+defaults to ``[{tag}]``. The generated ``voice_id`` is based on the effective
+TTS text, so changing a tag changes the audio id.
+
+At runtime, set :var:`config.voice_manifest_enabled` to True. The active profile
+comes from :var:`config.voice_manifest_profile_callback`, and playback uses the
+normal Ren'Py voice system. Games can replace source-key generation, profile
+selection, tag transforms, hashing, voice ids, audio paths, and final playback
+with the corresponding ``config.voice_manifest_*`` callbacks.
+
 Multilingual Voice
 ------------------
 

@@ -1596,6 +1596,49 @@ Showing Images
 
     The default transform is :var:`center`.
 
+.. var:: config.sprite_motion_auto_nudge = False
+
+    If True, Ren'Py applies a small ``nudge`` motion to the speaking image tag
+    at the start of interactive dialogue. The tag defaults to
+    ``renpy.get_say_image_tag()``, and can be replaced with
+    :var:`config.sprite_motion_auto_nudge_tag_callback`.
+
+.. var:: config.sprite_motion_auto_nudge_tag_callback = None
+
+    If not None, this callback is used to choose the tag that automatic nudging
+    applies to when dialogue begins.
+
+.. var:: config.sprite_motion_jump_settings = { }
+
+    A dictionary controlling ``spr_jump`` physics. Recognized keys include
+    ``jumpHeight``, ``jumpSpeed``, ``jumpDamping``, ``gravity``,
+    ``squashFactor``, ``landingSquashFactor``, and ``pause``.
+
+.. var:: config.sprite_motion_nudge_settings = { }
+
+    A dictionary controlling ``nudge`` motion. Recognized keys include
+    ``distance``, ``maxOffset``, ``duration``, ``squeezeFactor``, and
+    ``deformAmount``.
+
+.. var:: config.sprite_motion_apply_callback = None
+
+    If not None, this callback can replace how ``spr_jump`` and ``nudge`` are
+    applied to a tag. This is intended for games with custom layered sprite
+    systems.
+
+.. var:: config.depth_background_settings = { }
+
+    A dictionary controlling ``depth_background`` and ``depth_video``. It can
+    replace asset suffixes, displacement strength, drift and mouse motion, the
+    packed-video size, sprite parallax defaults, and whether the target layer is
+    cleared before showing the background.
+
+.. var:: config.depth_background_mode_callback = None
+
+    If not None, this callback receives the requested depth mode and returns
+    the effective mode to use. It can be used to implement player preferences
+    for ``off``, ``static``, ``drift``, ``mouse``, or ``auto`` behavior.
+
 .. var:: config.displayable_prefix = { }
 
     See :ref:`Displayable prefixes <displayable-prefix>`.
@@ -2141,6 +2184,51 @@ Voice
     voice audio.
 
     See :ref:`Automatic Voice <automatic-voice>` for more details.
+
+.. var:: config.voice_manifest_enabled = False
+
+    If True, enables the optional :ref:`voice-manifest` runtime lookup. When a
+    say statement begins, Ren'Py looks up the current source line and active
+    profile in :file:`voice_lookup.json` and queues the matching file through
+    the normal voice system.
+
+.. var:: config.voice_manifest_profile_callback = None
+
+    If not None, this is called with the loaded manifest lookup and should
+    return the active profile key. If it returns None or an empty value, the
+    manifest's default profile is used.
+
+.. var:: config.voice_manifest_hash_callback = None
+
+    If not None, this is called by the ``voice_manifest`` command with
+    ``label``, ``speaker``, ``tts_text``, and the row dictionary. It should
+    return the hash portion used in generated voice ids.
+
+.. var:: config.voice_manifest_audio_pattern = "voice/{voice_id}.ogg"
+
+    The default pattern used by the ``voice_manifest`` command and runtime
+    lookup when a manifest does not provide its own pattern.
+
+.. var:: config.voice_manifest_tag_pattern = r"/([A-Za-z][A-Za-z0-9 _'-]{0,60})/"
+
+    The regular expression used to find inline voice tags in script text. The
+    first capturing group is the tag name.
+
+.. var:: config.voice_manifest_tts_tag_format = "[{tag}] "
+
+    The default conversion from inline voice tags to generated TTS text.
+    :var:`config.voice_manifest_tts_tag_callback` can replace this behavior.
+
+.. var:: config.voice_manifest_tts_tag_callback = None
+
+    If not None, this callback receives an inline voice tag and returns the
+    replacement text used by the ``voice_manifest`` command for TTS output.
+
+.. var:: config.voice_manifest_play_callback = None
+
+    If not None, this is called instead of the default runtime call to
+    ``voice(filename)``. This can be used by games that need a custom playback
+    system.
 
 .. var:: config.emphasize_audio_channels = [ 'voice' ]
 

@@ -442,6 +442,7 @@ def import_all():
     import renpy.translation.scanstrings
     import renpy.translation.generation
     import renpy.translation.dialogue
+    import renpy.translation.voice_manifest
     import renpy.translation.extract
     import renpy.translation.merge
 

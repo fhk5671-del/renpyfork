@@ -133,6 +133,41 @@ The transforms are:
 
     Centers both horizontally and vertically.
 
+Optional Motion and Depth Statements
+====================================
+
+Ren'Py includes optional helper statements for small sprite motion and
+depth-map backgrounds. They are available to scripts, but have no effect unless
+the game uses the statements or enables automatic nudging.
+
+``spr_jump`` briefly re-shows the current image tag with a vertical bounce::
+
+    show eileen happy at center
+    spr_jump eileen
+    spr_jump eileen 0.5
+
+``nudge`` shifts a shown tag left or right with a short squeeze motion::
+
+    nudge eileen left
+    nudge eileen right 0.5
+
+Games can enable dialogue-driven automatic nudges with
+:var:`config.sprite_motion_auto_nudge`. The movement physics, target layer,
+image-name resolution, layered sprite parts, deform-part names, displacement
+maps, and final application can be replaced with the
+``config.sprite_motion_*`` settings and callbacks.
+
+``depth_background`` shows a still image with optional depth and foreground
+maps. ``depth_video`` shows a packed color/depth video, where the left half is
+color and the right half is depth::
+
+    depth_background beach_day auto sprite_parallax on
+    depth_video intro_depth_packed mouse
+
+Depth asset suffixes, mode selection, image lookup, video lookup, layer, tag,
+strength, and motion settings can be replaced with
+``config.depth_background_*`` settings and callbacks.
+
 
 .. _atl:
 

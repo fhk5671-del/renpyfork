@@ -1571,6 +1571,80 @@ A callback that is called when an auto-voice prediction is made.
 These are called with the voice tag of the character.
 """
 
+voice_manifest_enabled: bool = False
+"""
+If True, enables source-key voice manifest lookup and inline voice-tag filtering.
+"""
+
+voice_manifest_config: str | None = None
+"""
+The JSON configuration file used by the voice_manifest command, if any.
+"""
+
+voice_manifest_runtime_lookup: str = "game/audio/voice/manifest/voice_lookup.json"
+"""
+The filesystem path the voice_manifest command writes for runtime lookup.
+"""
+
+voice_manifest_lookup: str = "audio/voice/manifest/voice_lookup.json"
+"""
+The loadable path read by the runtime voice manifest callback.
+"""
+
+voice_manifest_script_files: list[str] | None = None
+voice_manifest_profiles: dict[str, Any] | None = None
+voice_manifest_dimensions: dict[str, Any] | None = None
+voice_manifest_default_profile: str = "default"
+voice_manifest_include_narration: bool = True
+voice_manifest_audio_pattern: str = "voice/{voice_id}.ogg"
+voice_manifest_audio_lines_dir: str = "game/audio/voice/lines"
+voice_manifest_speaker_names: dict[str, str] = {}
+voice_manifest_skip_speakers: list[str] | None = None
+voice_manifest_tag_pattern: str = r"/([A-Za-z][A-Za-z0-9 _'-]{0,60})/"
+voice_manifest_tts_tag_format: str = "[{tag}] "
+voice_manifest_display_tag_format: str = ""
+voice_manifest_strip_inline_tags: bool = True
+voice_manifest_require_loadable: bool = True
+voice_manifest_override_voice_statement: bool = False
+voice_manifest_renpy_id_fallback: bool = True
+
+voice_manifest_profile_callback: Callable[[dict[str, Any]], str | None] | None = None
+voice_manifest_runtime_source_key_callback: Callable[[], str | None] | None = None
+voice_manifest_source_key_callback: Callable[[str, int], str | None] | None = None
+voice_manifest_hash_callback: Callable[[str, str, str, dict[str, Any]], str] | None = None
+voice_manifest_voice_id_callback: Callable[[dict[str, Any], int], str | None] | None = None
+voice_manifest_export_audio_path_callback: Callable[[dict[str, Any]], str | None] | None = None
+voice_manifest_audio_path_callback: Callable[..., str | None] | None = None
+voice_manifest_display_tag_callback: Callable[[str], str | None] | None = None
+voice_manifest_tts_tag_callback: Callable[[str], str | None] | None = None
+voice_manifest_play_callback: Callable[..., Any] | None = None
+
+sprite_motion_layer: str = "master"
+sprite_motion_layer_callback: Callable[[str | None], str | None] | None = None
+sprite_motion_apply_callback: Callable[..., Any] | None = None
+sprite_motion_image_name_callback: Callable[[str, tuple[str, ...], str], str | None] | None = None
+sprite_motion_auto_nudge: bool = False
+sprite_motion_auto_nudge_tag_callback: Callable[..., str | None] | None = None
+sprite_motion_jump_settings: dict[str, Any] = {}
+sprite_motion_nudge_settings: dict[str, Any] = {}
+sprite_motion_layered_sprites: dict[str, Any] = {}
+sprite_motion_layered_parts_callback: Callable[[str, tuple[str, ...]], Any] | None = None
+sprite_motion_composite_size: tuple[int, int] | None = None
+sprite_motion_deform_parts: dict[str, list[str]] = {}
+sprite_motion_deform_parts_callback: Callable[[str], list[str] | None] | None = None
+sprite_motion_deform_part_modes: dict[str, str] = {}
+sprite_motion_deform_mode_callback: Callable[[str], str | None] | None = None
+sprite_motion_deform_maps: dict[Any, str] = {}
+sprite_motion_deform_map_callback: Callable[..., str | None] | None = None
+sprite_motion_deform_settings: dict[str, Any] = {}
+
+depth_background_layer: str = "master"
+depth_background_tag: str = "_depth_background"
+depth_background_settings: dict[str, Any] = {}
+depth_background_mode_callback: Callable[[str], str | None] | None = None
+depth_background_image_name_callback: Callable[[str, str], str | None] | None = None
+depth_background_video_path_callback: Callable[[str], str | None] | None = None
+
 clear_history_on_language_change: bool = True
 """
 Should the history be cleared when the language changes?
