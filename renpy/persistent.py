@@ -234,6 +234,7 @@ def load(filename):
             if not renpy.savetoken.check_persistent(s, do.unused_data.decode("utf-8")):
                 return None
 
+        s = renpy.savetoken.unprotect_data(s, do.unused_data.decode("utf-8"), b"persistent")
         persistent = loads(s)
 
     except Exception:
@@ -479,6 +480,7 @@ def save():
 
     try:
         data = dumps(renpy.game.persistent, bad_reduction_name="persistent")
+        data = renpy.savetoken.protect_data(data, b"persistent")
         compressed = zlib.compress(data, 3)
         compressed += renpy.savetoken.sign_data(data).encode("utf-8")
         renpy.loadsave.location.save_persistent(compressed)
@@ -555,6 +557,8 @@ class _MultiPersistent(object):
     def save(self):
         try:
             data = dumps(self, bad_reduction_name=f"MultiPersistent({self._name})")
+            purpose = b"multipersistent:" + self._name.encode("utf-8", "surrogateescape")
+            data = renpy.savetoken.protect_local_data(data, purpose)
         except Exception:
             if renpy.config.developer:
                 raise
@@ -635,6 +639,8 @@ def MultiPersistent(name, save_on_quit=False):
 
     if data is not None:
         try:
+            purpose = b"multipersistent:" + name.encode("utf-8", "surrogateescape")
+            data = renpy.savetoken.unprotect_local_data(data, purpose)
             rv = loads(data)
         except Exception:
             renpy.display.log.write("Loading MultiPersistent at %r:" % fn)  # type: ignore

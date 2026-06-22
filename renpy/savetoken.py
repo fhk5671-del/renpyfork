@@ -23,11 +23,18 @@ from __future__ import division, absolute_import, with_statement, print_function
 from renpy.compat import PY2, basestring, bchr, bord, chr, open, pystr, range, round, str, tobytes, unicode  # *
 
 import base64
+import hashlib
 import os
 import zipfile
+import zlib
 
 import renpy
-import renpy.ecsign
+
+try:
+    import renpy.ecsign as _ecsign
+except ImportError:
+    _ecsign = None
+    import ecdsa as _ecdsa  # type: ignore
 
 
 # The directory containing the save token information.
@@ -41,6 +48,14 @@ verifying_keys = []  # type: list[bytes]
 
 # True if the save files and persistent data should be upgraded.
 should_upgrade = False  # type: bool
+
+# Save and persistent payloads are sealed before being written to disk. The key
+# is still embedded in the client, so this is not DRM against a determined local
+# reverse engineer. It does stop casual zip/pickle editing and rejects tampered
+# payloads before unpickling.
+PROTECTED_DATA_MAGIC = b"RENPY-SAVE-SEAL-1\0"
+LOCAL_DATA_MAGIC = b"RENPY-LOCAL-SEAL-1\0"
+_SAVE_SEAL_SECRET = b"renpy-fork-rnx-save-seal-2026-06-22"
 
 
 def encode_line(key, a, b=None):  # type (str, bytes, bytes|None) -> str
@@ -78,6 +93,186 @@ def decode_line(line):  # type (str) -> (str, bytes, bytes|None)
         return "", b"", None
 
 
+def _purpose_bytes(purpose):
+    if isinstance(purpose, bytes):
+        return purpose
+
+    return purpose.encode("utf-8")
+
+
+def _save_token_game_id():
+    save_directory = renpy.config.save_directory or ""
+
+    if save_directory:
+        return save_directory
+
+    gamedir = renpy.config.gamedir or ""
+
+    try:
+        return os.path.abspath(gamedir)
+    except Exception:
+        return gamedir
+
+
+def _save_directory_bytes():
+    return _save_token_game_id().encode("utf-8", "surrogateescape")
+
+
+def _derive_seal_key(public_key, purpose):
+    h = hashlib.sha256()
+    h.update(_SAVE_SEAL_SECRET)
+    h.update(b"\0signed\0")
+    h.update(_purpose_bytes(purpose))
+    h.update(b"\0")
+    h.update(_save_directory_bytes())
+    h.update(b"\0")
+    h.update(public_key)
+    return h.digest()
+
+
+def _derive_local_seal_key(purpose):
+    h = hashlib.sha256()
+    h.update(_SAVE_SEAL_SECRET)
+    h.update(b"\0local\0")
+    h.update(_purpose_bytes(purpose))
+    return h.digest()
+
+
+def _current_public_key():
+    if not signing_keys:
+        raise ValueError("Save payload sealing requires a save token signing key.")
+
+    public = _get_public_key_from_private(signing_keys[0])
+
+    if public is None:
+        raise ValueError("Save payload sealing could not derive a public key.")
+
+    return public
+
+
+def _generate_private_key():
+    if _ecsign is not None:
+        return _ecsign.generate_private_key()
+
+    return _ecdsa.SigningKey.generate(curve=_ecdsa.NIST256p).to_der()
+
+
+def _get_public_key_from_private(private_key):
+    if _ecsign is not None:
+        return _ecsign.get_public_key_from_private(private_key)
+
+    sk = _ecdsa.SigningKey.from_der(private_key)
+
+    if sk is not None and sk.verifying_key is not None:
+        return sk.verifying_key.to_der()
+
+    return None
+
+
+def _sign_data(data, private_key):
+    if _ecsign is not None:
+        return _ecsign.sign_data(data, private_key)
+
+    return _ecdsa.SigningKey.from_der(private_key).sign(data)
+
+
+def _verify_data(data, public_key, sig):
+    if _ecsign is not None:
+        return _ecsign.verify_data(data, public_key, sig)
+
+    try:
+        return _ecdsa.VerifyingKey.from_der(public_key).verify(sig, data)
+    except Exception:
+        return False
+
+
+def _validate_private_key(private_key):
+    if _ecsign is not None:
+        return _ecsign.validate_private_key(private_key)
+
+    try:
+        _ecdsa.SigningKey.from_der(private_key)
+        return True
+    except Exception:
+        return False
+
+
+def _validate_public_key(public_key):
+    if _ecsign is not None:
+        return _ecsign.validate_public_key(public_key)
+
+    try:
+        _ecdsa.VerifyingKey.from_der(public_key)
+        return True
+    except Exception:
+        return False
+
+
+def is_protected_data(data):
+    """
+    Returns True if `data` is a sealed save/persistent payload.
+    """
+
+    return isinstance(data, bytes) and data.startswith(PROTECTED_DATA_MAGIC)
+
+
+def protect_data(data, purpose):
+    """
+    Compresses and seals signed save/persistent payload data.
+    """
+
+    if is_protected_data(data):
+        return data
+
+    public = _current_public_key()
+    compressed = zlib.compress(data, 3)
+    sealed = renpy.encryption.secretbox_encrypt(compressed, _derive_seal_key(public, purpose))
+    return PROTECTED_DATA_MAGIC + sealed
+
+
+def unprotect_data(data, signatures, purpose):
+    """
+    Opens a sealed save/persistent payload after its signature has been checked.
+    """
+
+    if not is_protected_data(data):
+        raise ValueError("Save payload is not sealed.")
+
+    body = data[len(PROTECTED_DATA_MAGIC) :]
+    keys = get_keys_from_signatures(signatures)
+
+    for key in keys:
+        try:
+            compressed = renpy.encryption.secretbox_decrypt(body, _derive_seal_key(key, purpose))
+            return zlib.decompress(compressed)
+        except Exception:
+            pass
+
+    raise ValueError("Save payload could not be opened.")
+
+
+def protect_local_data(data, purpose):
+    """
+    Seals local shared data that does not have a per-file signature.
+    """
+
+    if isinstance(data, bytes) and data.startswith(LOCAL_DATA_MAGIC):
+        return data
+
+    compressed = zlib.compress(data, 3)
+    sealed = renpy.encryption.secretbox_encrypt(compressed, _derive_local_seal_key(purpose))
+    return LOCAL_DATA_MAGIC + sealed
+
+
+def unprotect_local_data(data, purpose):
+    if not (isinstance(data, bytes) and data.startswith(LOCAL_DATA_MAGIC)):
+        raise ValueError("Local persistent payload is not sealed.")
+
+    body = data[len(LOCAL_DATA_MAGIC) :]
+    compressed = renpy.encryption.secretbox_decrypt(body, _derive_local_seal_key(purpose))
+    return zlib.decompress(compressed)
+
+
 def sign_data(data):
     """
     Signs `data` with the signing keys and returns the
@@ -87,8 +282,8 @@ def sign_data(data):
     rv = ""
 
     for i in signing_keys:
-        sig = renpy.ecsign.sign_data(data, i)
-        public = renpy.ecsign.get_public_key_from_private(i)
+        sig = _sign_data(data, i)
+        public = _get_public_key_from_private(i)
         rv += encode_line("signature", public, sig)
 
     return rv
@@ -109,7 +304,7 @@ def verify_data(data, signatures, check_verifying=True):
             if check_verifying and key not in verifying_keys:
                 continue
 
-            return renpy.ecsign.verify_data(data, key, sig)
+            return _verify_data(data, key, sig)
 
     return False
 
@@ -137,15 +332,8 @@ def check_load(log, signatures):
     valid. If not, it will prompt the user to confirm the load.
     """
 
-    if token_dir is None:
-        return True
-
-    if not signing_keys:
-        return True
-
-    # The web sandbox should be enough.
-    if renpy.emscripten:
-        return True
+    if not is_protected_data(log):
+        return False
 
     if verify_data(log, signatures):
         return True
@@ -163,7 +351,7 @@ def check_load(log, signatures):
 
     new_keys = [i for i in get_keys_from_signatures(signatures) if i not in verifying_keys]
 
-    if new_keys and ask(renpy.store.gui.TRUST_TOKEN):
+    if new_keys and token_dir is not None and ask(renpy.store.gui.TRUST_TOKEN):
         keys_text = os.path.join(token_dir, "security_keys.txt")
 
         with open(keys_text, "a") as f:
@@ -172,7 +360,7 @@ def check_load(log, signatures):
                 verifying_keys.append(k)
 
     if not signatures:
-        return True
+        return False
 
     # This check catches the case where the signature is not correct.
     return verify_data(log, signatures, False)
@@ -183,8 +371,8 @@ def check_persistent(data, signatures):
     This checks a persistent file to see if the token is valid.
     """
 
-    if should_upgrade:
-        return True
+    if not is_protected_data(data):
+        return False
 
     if verify_data(data, signatures):
         return True
@@ -202,10 +390,10 @@ def create_token(filename):
     except Exception:
         pass
 
-    sk = renpy.ecsign.generate_private_key()
+    sk = _generate_private_key()
     if sk is None:
         raise Exception("Failed to generate signing key")
-    vk = renpy.ecsign.get_public_key_from_private(sk)
+    vk = _get_public_key_from_private(sk)
     if vk is not None:
         line = encode_line("signing-key", sk, vk)
 
@@ -229,6 +417,10 @@ def upgrade_savefile(fn):
             return
 
         log = zf.read("log")
+
+        if not is_protected_data(log):
+            return
+
         zf.writestr("signatures", sign_data(log))
 
     os.utime(fn, (atime, mtime))
@@ -253,7 +445,7 @@ def upgrade_all_savefiles():
     upgraded = True
 
     with open(upgraded_txt, "a") as f:
-        f.write(renpy.config.save_directory + "\n")
+        f.write(_save_token_game_id() + "\n")
 
 
 def load_tokens(keys_fn):
@@ -274,7 +466,7 @@ def load_tokens(keys_fn):
             kind, key, _ = decode_line(l)
 
             if kind == "signing-key":
-                public = renpy.ecsign.get_public_key_from_private(key)
+                public = _get_public_key_from_private(key)
                 if public is not None:
                     signing_keys.append(key)
                     verifying_keys.append(public)
@@ -287,10 +479,6 @@ def init_tokens():
     global signing_keys
     global verifying_keys
     global should_upgrade
-
-    if renpy.config.save_directory is None:
-        should_upgrade = True
-        return
 
     # Determine the current save token, and the list of accepted save tokens.
     token_dir = renpy.__main__.path_to_saves(renpy.config.gamedir, "tokens")
@@ -312,11 +500,11 @@ def init_tokens():
 
     for tk in renpy.config.save_token_keys:
         k = base64.b64decode(tk)
-        if renpy.ecsign.validate_public_key(k):
+        if _validate_public_key(k):
             verifying_keys.append(k)
         else:
-            if renpy.ecsign.validate_private_key(k):
-                public = renpy.ecsign.get_public_key_from_private(k)
+            if _validate_private_key(k):
+                public = _get_public_key_from_private(k)
                 if public is not None:
                     vk = base64.b64encode(public).decode("utf-8")
                 else:
@@ -340,7 +528,7 @@ def init_tokens():
     else:
         upgraded_games = []
 
-    if renpy.config.save_directory in upgraded_games:
+    if _save_token_game_id() in upgraded_games:
         return
 
     should_upgrade = True
@@ -368,7 +556,7 @@ def get_save_token_keys():
     rv = []
 
     for i in signing_keys:
-        public = renpy.ecsign.get_public_key_from_private(i)
+        public = _get_public_key_from_private(i)
 
         if public is not None:
             rv.append(base64.b64encode(public).decode("utf-8"))

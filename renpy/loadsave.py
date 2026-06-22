@@ -218,7 +218,8 @@ def save(slotname, extra_info="", mutate_flag=False, include_screenshot=True, ex
 
     json = json_dumps(json)
 
-    sr = SaveRecord(screenshot, extra_info, json, logf.getvalue())
+    log_data = renpy.savetoken.protect_data(logf.getvalue(), b"save-log")
+    sr = SaveRecord(screenshot, extra_info, json, log_data)
     location.save(slotname, sr)
 
     location.scan()
@@ -633,6 +634,13 @@ def load(filename):
 
     renpy.exports.call_in_new_context("_before_load")
 
+    try:
+        log_data = renpy.savetoken.unprotect_data(log_data, signature, b"save-log")
+    except Exception:
+        renpy.display.log.write("Loading sealed save data.")
+        renpy.display.log.exception()
+        return
+
     roots, log = loads(log_data)
 
     log.unfreeze(roots, label="_after_load")
@@ -649,6 +657,13 @@ def get_save_data(filename):
     log_data, signature = location.load(filename)
 
     if not renpy.savetoken.check_load(log_data, signature):
+        return
+
+    try:
+        log_data = renpy.savetoken.unprotect_data(log_data, signature, b"save-log")
+    except Exception:
+        renpy.display.log.write("Reading sealed save data.")
+        renpy.display.log.exception()
         return
 
     roots, log = loads(log_data)

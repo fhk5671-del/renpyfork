@@ -22,11 +22,15 @@ These are intended to match the source tree in the RNX SDK:
 
 - `renpy/blobstore.py`
 - `renpy/premium_build.py`
+- `renpy/loadsave.py`
 - `renpy/loader.py`
+- `renpy/persistent.py`
+- `renpy/savetoken.py`
 - `renpy/script.py`
 - `renpy/arguments.py`
 - `renpy/config.py`
 - `renpy/common/00build.rpy`
+- `renpy/common/00start.rpy`
 - `renpy/common/00motion_depth.rpy`
 - `renpy/common/00voice_manifest.rpy`
 - `renpy/translation/voice_manifest.py`
