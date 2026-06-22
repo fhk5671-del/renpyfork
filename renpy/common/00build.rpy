@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2026 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2026 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -29,7 +29,7 @@ init -1500 python in build:
     from store import config, store
 
     import sys, os
-    import renpy.custom_format as custom_format
+    import renpy.blobstore as blobstore
 
     def make_file_lists(s):
         """
@@ -80,7 +80,7 @@ init -1500 python in build:
         ( "**/.*", None),
         ( "**.old", None),
         ( "**.new", None),
-        ( "**" + custom_format.ARCHIVE_EXTENSION, None),
+        ( "**" + blobstore.ARCHIVE_EXTENSION, None),
         ( "**.rpe", None),
         ( "**.rpe.py", None),
 
@@ -141,7 +141,7 @@ init -1500 python in build:
         ( renpy_sh, "linux mac"),
     ]))
 
-    for ext in custom_format.LEGACY_ARTIFACT_EXTENSIONS:
+    for ext in blobstore.LEGACY_ARTIFACT_EXTENSIONS:
         renpy_patterns.append(("**" + ext, None))
 
 
@@ -192,7 +192,23 @@ init -1500 python in build:
 
         ("tmp/", None),
         ("game/saves/", None),
+        ("game/cache/", None),
+        ("game/old-game/", None),
         ("game/bytecode.rpyb", None),
+        ("game/project.json", None),
+        ("game/log.txt", None),
+        ("game/errors.txt", None),
+        ("game/traceback.txt", None),
+        ("game/image_cache.txt", None),
+        ("game/text_overflow.txt", None),
+        ("game/dialogue.txt", None),
+        ("game/dialogue.tab", None),
+        ("game/profile_screen.txt", None),
+        ("game/lint.txt", None),
+        ("game/lint-*.txt", None),
+        ("game/files.txt", None),
+        ("game/memory.txt", None),
+        ("game/tmp/", None),
 
         ("archived/", None),
         ("launcherinfo.py", None),
@@ -222,6 +238,10 @@ init -1500 python in build:
         ("game/cache/bytecode-*.rpyb", None),
         ("game/cache/build_info.json", None),
         ("game/cache/build_time.txt", None),
+        ("game/rnx_premium.*", None),
+        ("game/.rnx/", None),
+        (".rnx/", None),
+        ("rnx_premium.*", None),
 
     ])
 

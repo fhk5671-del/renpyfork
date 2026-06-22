@@ -36,7 +36,10 @@ init python in project:
     import re
     import tempfile
 
-    multipersistent = MultiPersistent("launcher.renpy.org")
+    multipersistent = MultiPersistent("launcher-rnx.renpy.org")
+    RNX_PROJECT_KEY = "rnx_sdk_project"
+    RNX_PROJECT_SDK = "rnx"
+    RNX_FLAT_LAYOUT = "flat"
 
     if persistent.blurb is None:
         persistent.blurb = 0
@@ -49,6 +52,61 @@ init python in project:
     persistent.collapsed_folders.setdefault("Tutorials", False)
 
     project_filter = [ i.strip() for i in os.environ.get("RENPY_PROJECT_FILTER", "").split(":") if i.strip() ]
+
+    def read_project_data(path):
+        try:
+            with open(os.path.join(path, "project.json"), "r") as f:
+                return json.load(f)
+        except Exception:
+            return { }
+
+
+    def is_rnx_project_data(data):
+        if data.get(RNX_PROJECT_KEY, False):
+            return True
+
+        if data.get("sdk", None) == RNX_PROJECT_SDK:
+            return True
+
+        return False
+
+
+    def mark_rnx_project(path):
+        """
+        Marks a project as belonging to this RNX SDK launcher.
+        """
+
+        data_path = os.path.join(path, "project.json")
+        data = read_project_data(path)
+
+        data[RNX_PROJECT_KEY] = True
+        data["sdk"] = RNX_PROJECT_SDK
+        data.setdefault("rnx_layout", RNX_FLAT_LAYOUT)
+
+        with open(data_path, "w") as f:
+            json.dump(data, f, indent=2)
+
+
+    def is_rnx_project(p):
+        return is_rnx_project_data(p.data)
+
+
+    def include_in_rnx_launcher(p):
+        try:
+            if os.path.normcase(os.path.abspath(p.path)).startswith(os.path.normcase(os.path.abspath(config.renpy_base))):
+                return True
+        except Exception:
+            pass
+
+        project_type = p.data.get("type", "normal")
+
+        if project_type == "template":
+            return True
+
+        if project_type == "hidden":
+            return True
+
+        return is_rnx_project(p)
 
     LAUNCH_BLURBS = [
         _("After making changes to the script, press shift+R to reload your game."),
@@ -149,6 +207,8 @@ init python in project:
             data.setdefault("packages", [ "pc", "mac" ])
             data.setdefault("add_from", True)
             data.setdefault("force_recompile", True)
+            data.setdefault("rnx_premium_packs_only", False)
+            data.setdefault("rnx_premium_categories", [ "scripts", "images", "voice", "music", "audio", "video", "other" ])
             data.setdefault("android_build", "Release")
             data.setdefault("tutorial", False)
 
@@ -503,6 +563,15 @@ init python in project:
 
             fn = os.path.normpath(fn)
 
+            if self.gamedir == self.path:
+                prefix = os.path.normpath("game")
+                if fn == prefix:
+                    return self.gamedir
+                if fn.startswith(prefix + os.sep):
+                    fn1 = os.path.join(self.gamedir, fn[len(prefix) + 1:])
+                    if os.path.exists(fn1):
+                        return fn1
+
             fn1 = os.path.join(self.path, fn)
             if os.path.exists(fn1):
                 return fn1
@@ -530,8 +599,12 @@ init python in project:
                 return False
 
             rv = [ ]
-            rv.extend(i for i, isdir in util.walk(self.path)
-                if (not isdir) and is_script(i) and (not i.startswith("tmp/")) )
+            if self.gamedir == self.path:
+                rv.extend("game/" + i for i, isdir in util.walk(self.gamedir)
+                    if (not isdir) and is_script(i) and (not i.startswith(("tmp/", "old-game/", "saves/", "cache/"))) )
+            else:
+                rv.extend(i for i, isdir in util.walk(self.path)
+                    if (not isdir) and is_script(i) and (not i.startswith("tmp/")) )
 
             return rv
 
@@ -539,6 +612,14 @@ init python in project:
             """
             Returns true if the file exists in the game.
             """
+
+            if self.gamedir == self.path:
+                fn = os.path.normpath(fn)
+                prefix = os.path.normpath("game")
+                if fn == prefix:
+                    return os.path.exists(self.gamedir)
+                if fn.startswith(prefix + os.sep):
+                    return os.path.exists(os.path.join(self.gamedir, fn[len(prefix) + 1:]))
 
             return os.path.exists(os.path.join(self.path, fn))
 
@@ -712,6 +793,9 @@ init python in project:
                     # We have a project directory, so create a Project.
                     p = Project(p_path, name, parent_path=full_path)
 
+                    if not include_in_rnx_launcher(p):
+                        continue
+
                     # Adds the project to the ProjectFolder
                     pf.add(p)
 
@@ -739,6 +823,9 @@ init python in project:
             """
 
             if self.has_game(d):
+                return d
+
+            if is_rnx_project_data(read_project_data(d)):
                 return d
 
             if d.endswith(".app"):
@@ -805,6 +892,9 @@ init python in project:
                     p = Project(p_path, name, parent_path=os.path.dirname(ppath))
 
                     if project_filter and (p.name not in project_filter):
+                        return
+
+                    if not include_in_rnx_launcher(p):
                         return
 
                     project_type = p.data.get("type", "normal")

@@ -42,6 +42,8 @@ init -1500 python:
             state = {
                 "offsets": {},
                 "counts": {},
+                "pending_direction_signs": {},
+                "sprites": {},
                 "suppress_tags": {},
                 "suppress_next": False,
             }
@@ -83,6 +85,178 @@ init -1500 python:
         _sprite_motion_set_offset(tag, 0.0)
 
 
+    def _sprite_motion_direction_sign(direction):
+        if direction is None:
+            return None
+
+        if isinstance(direction, (int, float)):
+            if direction < 0:
+                return -1
+            if direction > 0:
+                return 1
+            return None
+
+        direction = str(direction).lower()
+
+        if direction in ("left", "-1"):
+            return -1
+
+        if direction in ("right", "1"):
+            return 1
+
+        return None
+
+
+    def _sprite_motion_mirrored_facing(facing, mirror=False):
+        if facing == "left" and mirror:
+            return "right"
+
+        if facing == "right" and mirror:
+            return "left"
+
+        return facing
+
+
+    def _sprite_motion_facing_group(facing):
+        if facing == "left":
+            return "left"
+
+        if facing in ("right", "front"):
+            return "right_front"
+
+        return None
+
+
+    def _sprite_motion_facing_transition_sign(previous_facing, current_facing):
+        previous_group = _sprite_motion_facing_group(previous_facing)
+        current_group = _sprite_motion_facing_group(current_facing)
+
+        if previous_group == "left" and current_group == "right_front":
+            return 1
+
+        if previous_group == "right_front" and current_group == "left":
+            return -1
+
+        return None
+
+
+    def _sprite_motion_lookup_facing(tag, attrs=(), mirror=False):
+        attrs = tuple(str(i) for i in (attrs or ()))
+        callback = getattr(config, "sprite_motion_facing_callback", None)
+
+        if callable(callback):
+            facing = callback(tag, attrs, mirror)
+            if facing is not None:
+                facing = str(facing).lower()
+                if facing in ("left", "right", "front"):
+                    return _sprite_motion_mirrored_facing(facing, mirror)
+
+        data = getattr(config, "sprite_motion_facing_map", {}) or {}
+        candidates = []
+
+        if attrs:
+            candidates.append(" ".join(attrs))
+            candidates.extend(attrs)
+
+        candidates.append("*")
+
+        for key in (str(tag), "default", "*"):
+            tag_facings = data.get(key, None)
+
+            if isinstance(tag_facings, str):
+                facing = tag_facings.lower()
+                if facing in ("left", "right", "front"):
+                    return _sprite_motion_mirrored_facing(facing, mirror)
+
+            if not isinstance(tag_facings, dict):
+                continue
+
+            for attr in candidates:
+                facing = tag_facings.get(attr, None)
+
+                if facing is None:
+                    continue
+
+                facing = str(facing).lower()
+
+                if facing in ("left", "right", "front"):
+                    return _sprite_motion_mirrored_facing(facing, mirror)
+
+        return None
+
+
+    def _sprite_motion_set_pending_nudge_sign(tag, sign):
+        state = _sprite_motion_state()
+        pending = state.setdefault("pending_direction_signs", {})
+
+        sign = _sprite_motion_direction_sign(sign)
+
+        if sign is None:
+            pending.pop(tag, None)
+        else:
+            pending[tag] = sign
+
+
+    def _sprite_motion_consume_pending_nudge_sign(tag):
+        state = _sprite_motion_state()
+        pending = state.setdefault("pending_direction_signs", {})
+        return _sprite_motion_direction_sign(pending.pop(tag, None))
+
+
+    def sprite_motion_queue_nudge_direction(tag, direction):
+        _sprite_motion_set_pending_nudge_sign(tag, direction)
+
+
+    def sprite_motion_note_facing(tag, attrs=None, mirror=False, facing=None):
+        state = _sprite_motion_state()
+        sprites = state.setdefault("sprites", {})
+
+        if attrs is None:
+            try:
+                attrs = renpy.get_attributes(tag, layer=_sprite_motion_layer(tag)) or ()
+            except Exception:
+                attrs = ()
+
+        attrs = tuple(str(i) for i in (attrs or ()))
+
+        if facing is None:
+            facing = _sprite_motion_lookup_facing(tag, attrs, mirror)
+        elif facing is not None:
+            facing = str(facing).lower()
+            if facing not in ("left", "right", "front"):
+                facing = None
+            else:
+                facing = _sprite_motion_mirrored_facing(facing, mirror)
+
+        previous = sprites.get(tag, {}) or {}
+        previous_attrs = tuple(previous.get("attrs", ()))
+        previous_mirror = bool(previous.get("mirror", False))
+        previous_facing = previous.get("facing", None)
+
+        changed = bool(previous) and (attrs != previous_attrs or bool(mirror) != previous_mirror or facing != previous_facing)
+
+        if changed:
+            _sprite_motion_set_pending_nudge_sign(tag, _sprite_motion_facing_transition_sign(previous_facing, facing))
+        else:
+            _sprite_motion_set_pending_nudge_sign(tag, None)
+
+        sprites[tag] = dict(attrs=attrs, mirror=bool(mirror), facing=facing)
+        return facing
+
+
+    def _sprite_motion_store_facing(tag, attrs=(), mirror=False, facing=None):
+        state = _sprite_motion_state()
+        sprites = state.setdefault("sprites", {})
+
+        attrs = tuple(str(i) for i in (attrs or ()))
+
+        if facing is None:
+            facing = _sprite_motion_lookup_facing(tag, attrs, mirror)
+
+        sprites[tag] = dict(attrs=attrs, mirror=bool(mirror), facing=facing)
+        return facing
+
+
     def sprite_motion_suppress_next_auto_nudge(tag=None):
         state = _sprite_motion_state()
 
@@ -97,40 +271,46 @@ init -1500 python:
 
         if state.get("suppress_next", False):
             state["suppress_next"] = False
+            _sprite_motion_set_pending_nudge_sign(tag, None)
             return True
 
         suppress_tags = state.setdefault("suppress_tags", {})
 
         if tag and suppress_tags.get(tag, False):
             suppress_tags[tag] = False
+            _sprite_motion_set_pending_nudge_sign(tag, None)
             return True
 
         return False
 
 
     def _sprite_motion_nudge_direction(tag, direction, automatic):
-        if direction == "left":
-            return -1
+        explicit_sign = _sprite_motion_direction_sign(direction)
 
-        if direction == "right":
-            return 1
+        if explicit_sign is not None:
+            _sprite_motion_set_pending_nudge_sign(tag, None)
+            return explicit_sign
+
+        pending_sign = _sprite_motion_consume_pending_nudge_sign(tag)
+
+        if pending_sign is not None:
+            return pending_sign
 
         state = _sprite_motion_state()
         offsets = state.setdefault("offsets", {})
         counts = state.setdefault("counts", {})
 
-        if automatic:
-            count = int(counts.get(tag, 0)) + 1
-            counts[tag] = count
+        count = int(counts.get(tag, 0)) + 1
+        counts[tag] = count
 
-            if count % 3 == 0:
-                current = float(offsets.get(tag, 0.0))
+        if count % 3 == 0:
+            current = float(offsets.get(tag, 0.0))
 
-                if current > 0.0:
-                    return -1
+            if current > 0.0:
+                return -1
 
-                if current < 0.0:
-                    return 1
+            if current < 0.0:
+                return 1
 
         try:
             return renpy.random.choice((-1, 1))
@@ -491,6 +671,8 @@ init -1500 python:
         except Exception:
             attrs = ()
 
+        _sprite_motion_store_facing(tag, attrs)
+
         nudge_offset = _sprite_motion_offset(tag)
         parts = _sprite_motion_layer_config(tag, attrs)
         displayable = None
@@ -696,6 +878,13 @@ init -1500 python:
         renpy.store._depth_background_sprite_parallax_enabled = False
 
 
+    def _sprite_motion_reset_state():
+        state = _sprite_motion_state()
+        state.setdefault("offsets", {}).clear()
+        state.setdefault("counts", {}).clear()
+        state.setdefault("pending_direction_signs", {}).clear()
+
+
     def _parse_depth_mode_statement(lexer, statement_name):
         name_parts = []
         mode = None
@@ -768,6 +957,7 @@ init -1500 python:
         renpy.store._depth_background_sprite_parallax_enabled = bool(sprite_parallax and motion_active)
         renpy.store._depth_background_offset_x = 0.0
         renpy.store._depth_background_offset_y = 0.0
+        _sprite_motion_reset_state()
 
         if settings.get("clear_layer", True):
             renpy.scene(layer=layer)
@@ -808,6 +998,7 @@ init -1500 python:
         renpy.store._depth_background_sprite_parallax_enabled = bool(sprite_parallax and motion_active)
         renpy.store._depth_background_offset_x = 0.0
         renpy.store._depth_background_offset_y = 0.0
+        _sprite_motion_reset_state()
 
         if settings.get("clear_layer", True):
             renpy.scene(layer=layer)

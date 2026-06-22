@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2026 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2026 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -163,7 +163,7 @@ init -1 python hide:
     # stored. (It needs to be set early, before any other init code
     # is run, so the persistent information can be found by the init code.)
 python early:
-    config.save_directory = "launcher-4"
+    config.save_directory = "launcher-rnx-4"
 
 init -1 python hide:
     #####################
@@ -226,7 +226,7 @@ init -1 python hide:
 # we build Ren'Py distributions.)
 init python:
 
-    import renpy.custom_format as custom_format
+    import renpy.blobstore as blobstore
 
     # We're building Ren'Py tonight.
     build.renpy = True
@@ -358,7 +358,7 @@ init python:
         build.classify_renpy(pattern + "/**" + renpy.script.COMPILED_SCRIPT_EXTENSION, binary)
         build.classify_renpy(pattern + "/**" + renpy.script.COMPILED_MODULE_EXTENSION, binary)
 
-        for ext in custom_format.LEGACY_ARTIFACT_EXTENSIONS:
+        for ext in blobstore.LEGACY_ARTIFACT_EXTENSIONS:
             build.classify_renpy(pattern + "/**" + ext, None)
 
         build.classify_renpy(pattern + "/**/" + renpy.script.BYTECODE_FILE, binary)

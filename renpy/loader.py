@@ -22,7 +22,7 @@
 from typing import Iterable, Literal, NamedTuple
 
 import renpy
-import renpy.custom_format as custom_format
+import renpy.blobstore as blobstore
 import os
 import os.path
 import sys
@@ -30,11 +30,15 @@ import threading
 import zlib
 import re
 import io
+import json
 import unicodedata
 import time
 import pathlib
 
-from renpy.pygame.rwobject import RWopsIO
+try:
+    from renpy.pygame.rwobject import RWopsIO
+except ImportError:
+    from pygame_sdl2.rwobject import RWopsIO
 
 from renpy.compat.pickle import loads
 from renpy.webloader import DownloadNeeded
@@ -145,23 +149,23 @@ class RNXArchiveHandler(object):
     Archive handler handling this fork's RNX archives.
     """
 
-    archive_extension = custom_format.ARCHIVE_EXTENSION
+    archive_extension = blobstore.ARCHIVE_EXTENSION
 
     @staticmethod
     def get_supported_extensions():
-        return [custom_format.ARCHIVE_EXTENSION]
+        return [blobstore.ARCHIVE_EXTENSION]
 
     @staticmethod
     def get_supported_headers():
-        return [custom_format.ARCHIVE_MAGIC]
+        return [blobstore.ARCHIVE_MAGIC]
 
     @staticmethod
     def read_index(infile):
-        l = infile.read(len(custom_format.ARCHIVE_HEADER_PLACEHOLDER))
+        l = infile.read(len(blobstore.ARCHIVE_HEADER_PLACEHOLDER))
         offset = int(l[8:24], 16)
         length = int(l[25:41], 16)
         infile.seek(offset)
-        return loads(custom_format.open_sealed(infile.read(length), custom_format.ARCHIVE_INDEX_PURPOSE))
+        return loads(blobstore.open_sealed(infile.read(length), blobstore.ARCHIVE_INDEX_PURPOSE))
 
 
 archive_handlers.append(RNXArchiveHandler)
@@ -190,12 +194,102 @@ def index_files():
         lower_map[unicodedata.normalize("NFC", fn.lower())] = fn
 
 
+PREMIUM_ARCHIVE_PRIORITY = {
+    "p10": 10,
+    "p15": 15,
+}
+
+_rnx_runtime_policy = None
+_rnx_runtime_policy_loaded = False
+
+
+def load_rnx_runtime_policy():
+    global _rnx_runtime_policy
+    global _rnx_runtime_policy_loaded
+
+    if _rnx_runtime_policy_loaded:
+        return _rnx_runtime_policy
+
+    _rnx_runtime_policy_loaded = True
+
+    candidates = []
+
+    gamedir = getattr(renpy.config, "gamedir", None)
+    if gamedir:
+        candidates.append(os.path.join(gamedir, "rnx_premium_policy.json"))
+
+    for search in renpy.config.searchpath:
+        candidates.append(os.path.join(renpy.config.basedir, search, "rnx_premium_policy.json"))
+
+    for path in candidates:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                _rnx_runtime_policy = json.load(f)
+            return _rnx_runtime_policy
+        except Exception:
+            pass
+
+    _rnx_runtime_policy = None
+    return None
+
+
+def archive_allowed(stem, ext):
+    if ext != blobstore.ARCHIVE_EXTENSION:
+        return True
+
+    policy = load_rnx_runtime_policy()
+    if not policy:
+        return True
+
+    allowed = policy.get("allowed_archives", None)
+    if not allowed:
+        return True
+
+    filename = os.path.basename(stem).lower() + ext.lower()
+    return filename in { str(i).lower() for i in allowed }
+
+
+def compiled_script_allowed(fn, dir):
+    policy = load_rnx_runtime_policy()
+    if not policy:
+        return True
+
+    allowed = policy.get("allowed_compiled_scripts", None)
+    if not allowed:
+        return True
+
+    if dir is not None:
+        gamedir = getattr(renpy.config, "gamedir", None)
+        if gamedir and os.path.normcase(os.path.normpath(dir)) != os.path.normcase(os.path.normpath(gamedir)):
+            return True
+
+    normalized = fn.replace("\\", "/").lstrip("/").lower()
+    return normalized in { str(i).replace("\\", "/").lstrip("/").lower() for i in allowed }
+
+
+def archive_sort_key(item):
+    stem, _ext, _fn = item
+    base = os.path.basename(stem).lower()
+    return (premium_archive_priority(base), stem)
+
+
+def premium_archive_priority(stem):
+    if stem in PREMIUM_ARCHIVE_PRIORITY:
+        return PREMIUM_ARCHIVE_PRIORITY[stem]
+
+    for prefix, priority in (("p10-", 10), ("p15-", 15)):
+        if stem.startswith(prefix):
+            return priority
+
+    return 0
+
+
 def index_archives():
     """
     Loads in the indexes for the archive files.
     """
 
-    arc_files.sort(reverse=True)
+    arc_files.sort(key=archive_sort_key, reverse=True)
 
     archives.clear()
     renpy.config.archives.clear()
@@ -383,7 +477,8 @@ def scandirfiles_from_filesystem(add, seen):
             ext = "." + ext
 
             if ext in exts:
-                arc_files.append((stem, ext, f"{i}/{j}"))
+                if archive_allowed(stem, ext):
+                    arc_files.append((stem, ext, f"{i}/{j}"))
             else:
                 add(i, j, files, seen)
 
@@ -505,6 +600,60 @@ def load_from_filesystem(name):
 file_open_callbacks.append(load_from_filesystem)
 
 
+def load_archive_member(afn, index, name):
+    data = []
+
+    # Direct path.
+    if len(index[name]) == 1:
+        t = index[name][0]
+        if len(t) == 2:
+            offset, dlen = t
+            start = b""
+        elif len(t) == 3:
+            offset, dlen, _usize = t
+            with open(afn, "rb") as f:
+                f.seek(offset)
+                member = blobstore.open_sealed(f.read(dlen), blobstore.ARCHIVE_MEMBER_PURPOSE)
+
+            rv = RWopsIO.from_buffer(member, name=name)
+            return io.BufferedReader(rv)
+        else:
+            offset, dlen, start = t
+
+        if start == None or len(start) == 0:
+            rv = RWopsIO(afn, "rb", base=offset, length=dlen)
+            return io.BufferedReader(rv)
+        else:
+            a = RWopsIO.from_buffer(start, name=name)
+            b = RWopsIO(afn, "rb", base=offset, length=dlen)
+            rv = RWopsIO.from_split(a, b, name=name)
+            rv = io.BufferedReader(rv)
+
+    # Compatibility path.
+    else:
+        with open(afn, "rb") as f:
+            for offset, dlen in index[name]:
+                f.seek(offset)
+                data.append(f.read(dlen))
+
+            return io.BufferedReader(RWopsIO.from_buffer(b"".join(data), name=name))
+
+    return None
+
+
+def load_from_premium_archive(name):
+    for afn, index in archives:
+        stem = os.path.splitext(os.path.basename(afn))[0].lower()
+        if not premium_archive_priority(stem):
+            continue
+        if name not in index:
+            continue
+
+        return load_archive_member(afn, index, name)
+
+    return None
+
+
 def load_from_archive(name):
     """
     Returns an open python file object of the given type from an archive file.
@@ -513,46 +662,12 @@ def load_from_archive(name):
         if not name in index:
             continue
 
-        data = []
-
-        # Direct path.
-        if len(index[name]) == 1:
-            t = index[name][0]
-            if len(t) == 2:
-                offset, dlen = t
-                start = b""
-            elif len(t) == 3:
-                offset, dlen, _usize = t
-                with open(afn, "rb") as f:
-                    f.seek(offset)
-                    member = custom_format.open_sealed(f.read(dlen), custom_format.ARCHIVE_MEMBER_PURPOSE)
-
-                rv = RWopsIO.from_buffer(member, name=name)
-                return io.BufferedReader(rv)
-            else:
-                offset, dlen, start = t
-
-            if start == None or len(start) == 0:
-                rv = RWopsIO(afn, "rb", base=offset, length=dlen)
-                return io.BufferedReader(rv)
-            else:
-                a = RWopsIO.from_buffer(start, name=name)
-                b = RWopsIO(afn, "rb", base=offset, length=dlen)
-                rv = RWopsIO.from_split(a, b, name=name)
-                rv = io.BufferedReader(rv)
-
-        # Compatibility path.
-        else:
-            with open(afn, "rb") as f:
-                for offset, dlen in index[name]:
-                    f.seek(offset)
-                    data.append(f.read(dlen))
-
-                return io.BufferedReader(RWopsIO.from_buffer(b"".join(data), name=name))
+        return load_archive_member(afn, index, name)
 
     return None
 
 
+file_open_callbacks.insert(1, load_from_premium_archive)
 file_open_callbacks.append(load_from_archive)
 
 

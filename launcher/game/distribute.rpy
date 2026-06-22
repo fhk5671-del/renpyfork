@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2026 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2026 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -50,7 +50,8 @@ init python in distribute:
     import plistlib
     import time
     import shutil
-    import renpy.custom_format as custom_format
+    import renpy.blobstore as blobstore
+    import renpy.premium_build as premium_build
 
     def py(s):
         """
@@ -621,6 +622,8 @@ fix_dlc("renios", "renios")
                 raise Exception("Could not get build data from the project. Please ensure the project runs.")
 
             self.build = build = project.dump['build']
+            self.rnx_premium_packs_only = bool(project.data.get("rnx_premium_packs_only", False))
+            self.premium_build = premium_build.PremiumBuild(project, type(project), reporter).prepare(self.rnx_premium_packs_only)
 
             # Map from file list name to file list.
             self.file_lists = collections.defaultdict(FileList)
@@ -678,17 +681,42 @@ fix_dlc("renios", "renios")
                 elif name in packages:
                     build_packages.append(i)
 
+            if self.rnx_premium_packs_only:
+                if self.premium_build is None:
+                    self.reporter.info(_("RNX premium packs only was selected, but no game/rnx_premium.json manifest was found."), pause=True)
+                    self.log.close()
+                    return
+
+                self.reporter.info(_("Writing RNX premium packs..."))
+                self.premium_build.write_sidecar_packs(self.destination)
+                self.log.close()
+
+                if report_success:
+                    self.reporter.info(_("RNX premium packs have been built."))
+
+                return
+
             if not build_packages:
                 self.reporter.info(_("No packages are selected, so there's nothing to do."), pause=True)
                 self.log.close()
                 return
 
-            self.scan_and_classify(project.path, build["base_patterns"])
+            if os.path.normcase(os.path.abspath(project.gamedir)) == os.path.normcase(os.path.abspath(project.path)):
+                self.scan_and_classify(project.gamedir, build["base_patterns"], prefix="game")
+            else:
+                self.scan_and_classify(project.path, build["base_patterns"])
+
+            if self.premium_build is not None:
+                self.premium_build.apply_to_file_lists(self.file_lists, File, build["archives"])
 
             if noarchive:
                 self.ignore_archives(build['archives'])
             else:
                 self.archive_files(build["archives"])
+
+            if self.premium_build is not None and not packagedest:
+                self.reporter.info(_("Writing RNX premium packs..."))
+                self.premium_build.write_sidecar_packs(self.destination)
 
             # Add Ren'Py.
             self.reporter.info(_("Scanning Ren'Py files..."))
@@ -792,7 +820,7 @@ fix_dlc("renios", "renios")
 
             return rv
 
-        def scan_and_classify(self, directory, patterns):
+        def scan_and_classify(self, directory, patterns, prefix=None):
             """
             Walks through the `directory`, finds files and directories that
             match the pattern, and assigns them to the appropriate file list.
@@ -863,8 +891,16 @@ fix_dlc("renios", "renios")
                             os.path.join(path, fn),
                             )
 
+            if prefix is not None:
+                prefix = prefix.strip("/")
+
             for fn in os.listdir(directory):
-                walk(fn, os.path.join(directory, fn))
+                name = fn
+
+                if prefix:
+                    name = prefix + "/" + fn
+
+                walk(name, os.path.join(directory, fn))
 
         def merge_file_lists(self):
             """
@@ -986,7 +1022,7 @@ fix_dlc("renios", "renios")
                 if not self.file_lists[arcname]:
                     continue
 
-                arcfn = arcname + custom_format.ARCHIVE_EXTENSION
+                arcfn = arcname + blobstore.ARCHIVE_EXTENSION
                 arcpath = self.temp_filename(arcfn)
 
                 # Create new directories leading to the new archive file relative to the tmp root
@@ -1030,8 +1066,8 @@ fix_dlc("renios", "renios")
 
             if self.build["script_version"]:
 
-                if (not os.path.exists(os.path.join(self.project.path, "game", "script_version.rpy"))) and \
-                    (not os.path.exists(os.path.join(self.project.path, "game", "script_version" + renpy.script.COMPILED_SCRIPT_EXTENSION))):
+                if (not os.path.exists(os.path.join(self.project.gamedir, "script_version.rpy"))) and \
+                    (not os.path.exists(os.path.join(self.project.gamedir, "script_version" + renpy.script.COMPILED_SCRIPT_EXTENSION))):
 
                     script_version_txt = self.temp_filename("script_version.txt")
 
@@ -1869,7 +1905,7 @@ fix_dlc("renios", "renios")
                 os.makedirs(os.path.dirname(dst))
             except Exception:
                 pass
-            shutil.copyfile(os.path.join(project.path, src), dst)
+            shutil.copyfile(project.unelide_filename(src), dst)
 
         reporter.progress_done()
 

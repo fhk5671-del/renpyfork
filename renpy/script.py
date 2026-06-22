@@ -32,9 +32,12 @@ import difflib
 import time
 import struct
 import shutil
+import sys
+import zlib
+from importlib.util import MAGIC_NUMBER as PYC_MAGIC
 
 import renpy
-import renpy.custom_format as custom_format
+import renpy.blobstore as blobstore
 
 from renpy.compat.pickle import loads, dumps
 
@@ -42,17 +45,28 @@ from renpy.compat.pickle import loads, dumps
 # The version of the dumped script.
 script_version = renpy.script_version
 
+# Change this to force a recompile of Python when required.
+PYC_MAGIC += b"_2025-06-16"
+
 # Change this to force a recompile of compiled script files when required, if the .rpy file exists.
 RPYC_MAGIC = b"_rnx_2026-06-17"
+PYC_MAGIC = RPYC_MAGIC
 
 # A string at the start of each compiled script file.
-RPYC2_HEADER = custom_format.COMPILED_SCRIPT_HEADER
+RPYC2_HEADER = blobstore.COMPILED_SCRIPT_HEADER
 
-COMPILED_SCRIPT_EXTENSION = custom_format.COMPILED_SCRIPT_EXTENSION
-COMPILED_MODULE_EXTENSION = custom_format.COMPILED_MODULE_EXTENSION
+COMPILED_SCRIPT_EXTENSION = blobstore.COMPILED_SCRIPT_EXTENSION
+COMPILED_MODULE_EXTENSION = blobstore.COMPILED_MODULE_EXTENSION
 
 # Kept for backwards compatibility.
-BYTECODE_FILE = renpy.python.CompileCache.BYTECODE_FILE
+try:
+    BYTECODE_FILE = renpy.python.CompileCache.BYTECODE_FILE
+    OLD_BYTECODE_FILE = renpy.python.CompileCache.OLD_BYTECODE_FILE
+    BYTECODE_VERSION = renpy.python.CompileCache.BYTECODE_VERSION
+except AttributeError:
+    OLD_BYTECODE_FILE = "cache/bytecode.rpyb"
+    BYTECODE_FILE = "cache/bytecode-{}{}.rpyb".format(sys.version_info.major, sys.version_info.minor)
+    BYTECODE_VERSION = 1
 
 class ScriptError(Exception):
     """
@@ -81,6 +95,13 @@ class LabelNotFound(ScriptError, LookupError):
 
         if suggestion := renpy.error.compute_closest_value(self.name, d):
             return f" Did you mean: '{suggestion}'?"
+
+
+def parser_has_parse_errors() -> bool:
+    if hasattr(renpy.parser, "has_parse_errors"):
+        return renpy.parser.has_parse_errors()
+
+    return bool(getattr(renpy.parser, "parse_errors", None))
 
 
 def collapse_stmts(stmts):
@@ -148,7 +169,14 @@ class Script(object):
 
         self.record_pycode = True
 
+        # Older SDK python.py keeps bytecode caches on Script instead of
+        # renpy.python.CompileCache.
+        self.bytecode_oldcache = {}
+        self.bytecode_newcache = {}
+        self.bytecode_dirty = False
+
         self.translator = renpy.translation.ScriptTranslator()
+        self.init_bytecode()
 
         self.scan_script_files()
 
@@ -279,6 +307,9 @@ class Script(object):
                 target = script_files
 
             elif fn.endswith(COMPILED_SCRIPT_EXTENSION):
+                if not renpy.loader.compiled_script_allowed(fn, dir):
+                    continue
+
                 fn = fn[: -len(COMPILED_SCRIPT_EXTENSION)]
                 target = script_files
 
@@ -289,6 +320,9 @@ class Script(object):
                 fn = fn[:-5]
                 target = module_files
             elif fn.endswith(COMPILED_MODULE_EXTENSION):
+                if not renpy.loader.compiled_script_allowed(fn, dir):
+                    continue
+
                 fn = fn[: -len(COMPILED_MODULE_EXTENSION)]
                 target = module_files
             else:
@@ -432,7 +466,7 @@ class Script(object):
         for priority, fn, dir in script_files:
 
             if priority != last_priority:
-                if renpy.parser.has_parse_errors():
+                if parser_has_parse_errors():
                     skipped += len(script_files) - count
                     break
 
@@ -709,7 +743,9 @@ class Script(object):
 
             if isinstance(node, renpy.ast.Testcase):
                 # Handle testcases specially, as they are not part of the script.
-                renpy.test.testexecution.register_testcase(node.test)
+                register_testcase = getattr(renpy.test.testexecution, "register_testcase", None)
+                if register_testcase is not None:
+                    register_testcase(node.test)
 
             else:
                 check_name(node)
@@ -751,7 +787,7 @@ class Script(object):
         f.seek(0, 2)
 
         start = f.tell()
-        data = custom_format.seal(data, custom_format.COMPILED_SCRIPT_PURPOSE)
+        data = blobstore.seal(data, blobstore.COMPILED_SCRIPT_PURPOSE)
         f.write(data)
 
         f.seek(len(RPYC2_HEADER) + 12 * (slot - 1), 0)
@@ -797,7 +833,7 @@ class Script(object):
         f.seek(start)
         data = f.read(length)
 
-        return custom_format.open_sealed(data, custom_format.COMPILED_SCRIPT_PURPOSE)
+        return blobstore.open_sealed(data, blobstore.COMPILED_SCRIPT_PURPOSE)
 
     def static_transforms(self, stmts):
         """
@@ -1082,6 +1118,26 @@ class Script(object):
 
         self.digest.update(digest)  # type: ignore
 
+    def init_bytecode(self):
+        """
+        Loads the bytecode cache for SDK builds that keep it on Script.
+        """
+
+        if hasattr(renpy.python, "CompileCache"):
+            return
+
+        if renpy.game.args.compile_python:
+            return
+
+        try:
+            with renpy.loader.load(BYTECODE_FILE) as f:
+                version, cache = loads(zlib.decompress(f.read()))
+                if version == BYTECODE_VERSION:
+                    self.bytecode_oldcache = cache
+
+        except Exception:
+            pass
+
     def update_bytecode(self):
         """
         Compiles the PyCode objects in self.all_pycode, updating the
@@ -1139,6 +1195,29 @@ class Script(object):
                 renpy.game.exception_info = old_ei
 
         self.all_pycode = []
+
+    def save_bytecode(self):
+        if hasattr(renpy.python, "CompileCache"):
+            return
+
+        if renpy.macapp:
+            return
+
+        if self.bytecode_dirty:
+            try:
+                fn = renpy.loader.get_path(BYTECODE_FILE)
+
+                with open(fn, "wb") as f:
+                    data = (BYTECODE_VERSION, self.bytecode_newcache)
+                    f.write(zlib.compress(dumps(data), 3))
+            except Exception:
+                pass
+
+            fn = renpy.loader.get_path(OLD_BYTECODE_FILE)
+            try:
+                os.unlink(fn)
+            except Exception:
+                pass
 
     def lookup(self, label):
         """

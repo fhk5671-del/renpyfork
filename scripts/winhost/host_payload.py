@@ -49,7 +49,7 @@ init -999 python:
     import os
     import sys
 
-    import renpy.custom_format as _premium_format
+    import renpy.blobstore as _blobstore
 
     class _CheatEntry(object):
         def __init__(self, id, code, target, label, action, selected, sensitive, tags):
@@ -218,7 +218,7 @@ init -999 python:
                     f.seek(offset)
                     data = f.read(dlen)
 
-                return _premium_format.open_sealed(data, _premium_format.ARCHIVE_MEMBER_PURPOSE)
+                return _blobstore.open_sealed(data, _blobstore.ARCHIVE_MEMBER_PURPOSE)
             except Exception:
                 return None
 

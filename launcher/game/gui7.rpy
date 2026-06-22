@@ -404,7 +404,10 @@ label gui_project_common:
         width, height = gui_size
         accent, boring, light = gui_color
 
-        prefix = os.path.join(project_dir, "game")
+        if gui_new:
+            prefix = project_dir
+        else:
+            prefix = project.current.gamedir
 
         if not os.path.isdir(prefix) and not gui_new:
             interface.error("{} does not appear to be a Ren'Py game.".format(prefix))
@@ -439,6 +442,7 @@ label gui_project_common:
 
         # Activate the project.
         with interface.error_handling(_("activating the new project")):
+            project.mark_rnx_project(project_dir)
             project.manager.scan()
             project.Select(project.manager.get(project_name))()
 
@@ -473,7 +477,7 @@ label new_template_project:
         width, height = gui_size
         accent, boring, light = gui_color
 
-        prefix = os.path.join(project_dir, "game")
+        prefix = project_dir
         template = os.path.join(gui_template_path, "game")
 
         # Most of this isn't actually used.
@@ -499,6 +503,7 @@ label new_template_project:
 
         # Activate the project.
         with interface.error_handling(_("activating the new project")):
+            project.mark_rnx_project(project_dir)
             project.manager.scan()
             project.Select(project.manager.get(project_name))()
 

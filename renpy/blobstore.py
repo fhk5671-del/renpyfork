@@ -11,7 +11,7 @@
 # The above copyright notice and this permission notice shall be
 # included in all copies or substantial portions of the Software.
 
-"""Custom packaged-file helpers for this Ren'Py fork.
+"""Packaged-file blob helpers for this Ren'Py fork.
 
 This intentionally uses only the Python standard library so the fork does not
 gain new platform packaging requirements.

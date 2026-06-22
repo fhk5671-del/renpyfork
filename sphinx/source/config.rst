@@ -1608,6 +1608,19 @@ Showing Images
     If not None, this callback is used to choose the tag that automatic nudging
     applies to when dialogue begins.
 
+.. var:: config.sprite_motion_facing_callback = None
+
+    If not None, this callback can return ``"left"``, ``"right"``, or
+    ``"front"`` for a sprite tag and its attributes. This lets custom staging
+    systems queue nudges from sprite-facing changes without hardcoding their
+    naming rules into Ren'Py.
+
+.. var:: config.sprite_motion_facing_map = { }
+
+    A dictionary fallback used to look up sprite facing by tag and attribute.
+    Keys are sprite tags, ``"default"``, or ``"*"``; values can be a facing
+    string or a dictionary from attribute keys to facing strings.
+
 .. var:: config.sprite_motion_jump_settings = { }
 
     A dictionary controlling ``spr_jump`` physics. Recognized keys include

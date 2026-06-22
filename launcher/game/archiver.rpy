@@ -1,4 +1,4 @@
-﻿# Copyright 2004-2026 Tom Rothamel <pytom@bishoujo.us>
+# Copyright 2004-2026 Tom Rothamel <pytom@bishoujo.us>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation files
@@ -28,7 +28,7 @@ init python in archiver:
     import sys
     import random
     import glob
-    import renpy.custom_format as custom_format
+    import renpy.blobstore as blobstore
 
     from pickle import dumps, HIGHEST_PROTOCOL
 
@@ -46,7 +46,7 @@ init python in archiver:
             # The index to the file.
             self.index = _dict()
 
-            self.f.write(custom_format.ARCHIVE_HEADER_PLACEHOLDER)
+            self.f.write(blobstore.ARCHIVE_HEADER_PLACEHOLDER)
 
         def add(self, name, path):
             """
@@ -58,7 +58,7 @@ init python in archiver:
             with open(path, "rb") as df:
                 data = df.read()
                 usize = len(data)
-                data = custom_format.seal(data, custom_format.ARCHIVE_MEMBER_PURPOSE)
+                data = blobstore.seal(data, blobstore.ARCHIVE_MEMBER_PURPOSE)
                 dlen = len(data)
 
             offset = self.f.tell()
@@ -70,12 +70,12 @@ init python in archiver:
         def close(self):
 
             indexoff = self.f.tell()
-            index = custom_format.seal(dumps(self.index, HIGHEST_PROTOCOL), custom_format.ARCHIVE_INDEX_PURPOSE)
+            index = blobstore.seal(dumps(self.index, HIGHEST_PROTOCOL), blobstore.ARCHIVE_INDEX_PURPOSE)
 
             self.f.write(index)
 
             self.f.seek(0)
-            self.f.write(custom_format.ARCHIVE_HEADER % (indexoff, len(index)))
+            self.f.write(blobstore.ARCHIVE_HEADER % (indexoff, len(index)))
 
             self.f.close()
 

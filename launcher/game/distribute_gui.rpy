@@ -20,6 +20,8 @@
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 init python:
+    import os
+
     class PackageToggle(Action):
         def __init__(self, name):
             self.name = name
@@ -50,6 +52,39 @@ init python:
 
             project.current.save_data()
             renpy.restart_interaction()
+
+
+    class CategoryToggle(Action):
+        def __init__(self, category):
+            self.category = category
+
+        def get_selected(self):
+            return self.category in project.current.data["rnx_premium_categories"]
+
+        def __call__(self):
+            categories = project.current.data["rnx_premium_categories"]
+
+            if self.category in categories:
+                categories.remove(self.category)
+            else:
+                categories.append(self.category)
+
+            project.current.save_data()
+            renpy.restart_interaction()
+
+
+    def has_rnx_premium_manifest():
+        base = project.current.path
+        for rel in [
+            "game/rnx_premium.json",
+            "rnx_premium.json",
+            ".rnx/premium_build.json",
+            "game/.rnx/premium_build.json",
+        ]:
+            if os.path.exists(os.path.join(base, rel)):
+                return True
+
+        return False
 
 
     DEFAULT_BUILD_INFO = """
@@ -247,6 +282,27 @@ screen build_distributions:
 
                         textbutton _("Add from clauses to calls") action DataToggle("add_from") style "l_checkbox"
                         textbutton _("Force Recompile") action DataToggle("force_recompile") style "l_checkbox"
+
+                    if has_rnx_premium_manifest():
+                        add HALF_SPACER
+                        add SEPARATOR2
+
+                        frame:
+                            style "l_indent"
+                            has vbox
+
+                            text _("RNX Premium Packs:")
+
+                            add HALF_SPACER
+
+                            textbutton _("Premium Packs Only") action DataToggle("rnx_premium_packs_only") style "l_checkbox"
+                            textbutton _("Scripts") action CategoryToggle("scripts") style "l_checkbox"
+                            textbutton _("Images") action CategoryToggle("images") style "l_checkbox"
+                            textbutton _("Voice") action CategoryToggle("voice") style "l_checkbox"
+                            textbutton _("Music") action CategoryToggle("music") style "l_checkbox"
+                            textbutton _("Audio") action CategoryToggle("audio") style "l_checkbox"
+                            textbutton _("Video") action CategoryToggle("video") style "l_checkbox"
+                            textbutton _("Other") action CategoryToggle("other") style "l_checkbox"
 
 
     textbutton _("Return") action Jump("front_page") style "l_left_button"

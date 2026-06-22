@@ -10,9 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def load_custom_format():
-    path = ROOT / "renpy" / "custom_format.py"
-    spec = importlib.util.spec_from_file_location("_rnx_custom_format", path)
+def load_blobstore():
+    path = ROOT / "renpy" / "blobstore.py"
+    spec = importlib.util.spec_from_file_location("_rnx_blobstore", path)
 
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load {path}")
@@ -47,8 +47,8 @@ def parse_member(value: str) -> tuple[Path, str]:
     return Path(source), archive_name.replace("\\", "/").lstrip("/")
 
 
-def add_member(custom_format, handle, index: dict, archive_name: str, data: bytes) -> None:
-    sealed = custom_format.seal(data, custom_format.ARCHIVE_MEMBER_PURPOSE)
+def add_member(blobstore, handle, index: dict, archive_name: str, data: bytes) -> None:
+    sealed = blobstore.seal(data, blobstore.ARCHIVE_MEMBER_PURPOSE)
     offset = handle.tell()
     handle.write(sealed)
     index[archive_name] = [(offset, len(sealed), len(data))]
@@ -62,23 +62,23 @@ def main() -> None:
     parser.add_argument("--add", action="append", default=[], type=parse_member, metavar="SOURCE=ARCHIVE_PATH")
     args = parser.parse_args()
 
-    custom_format = load_custom_format()
+    blobstore = load_blobstore()
     index = {}
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     with args.out.open("wb") as handle:
-        handle.write(custom_format.ARCHIVE_HEADER_PLACEHOLDER)
-        add_member(custom_format, handle, index, premium_marker_path(args.game_id, args.tier), premium_marker_token(args.game_id, args.tier))
+        handle.write(blobstore.ARCHIVE_HEADER_PLACEHOLDER)
+        add_member(blobstore, handle, index, premium_marker_path(args.game_id, args.tier), premium_marker_token(args.game_id, args.tier))
 
         for source, archive_name in args.add:
-            add_member(custom_format, handle, index, archive_name, source.read_bytes())
+            add_member(blobstore, handle, index, archive_name, source.read_bytes())
 
         index_offset = handle.tell()
-        index_data = custom_format.seal(pickle.dumps(index, pickle.HIGHEST_PROTOCOL), custom_format.ARCHIVE_INDEX_PURPOSE)
+        index_data = blobstore.seal(pickle.dumps(index, pickle.HIGHEST_PROTOCOL), blobstore.ARCHIVE_INDEX_PURPOSE)
         handle.write(index_data)
         handle.seek(0)
-        handle.write(custom_format.ARCHIVE_HEADER % (index_offset, len(index_data)))
+        handle.write(blobstore.ARCHIVE_HEADER % (index_offset, len(index_data)))
 
     print(args.out)
 

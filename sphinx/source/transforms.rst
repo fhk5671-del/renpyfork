@@ -157,6 +157,12 @@ image-name resolution, layered sprite parts, deform-part names, displacement
 maps, and final application can be replaced with the
 ``config.sprite_motion_*`` settings and callbacks.
 
+When a custom staging system knows that a sprite has changed facing, it can call
+``sprite_motion_note_facing`` or ``sprite_motion_queue_nudge_direction`` before
+the next directionless ``nudge``. Directionless nudges use queued facing changes
+first; otherwise every third nudge tries to return toward center and the others
+choose a random side.
+
 ``depth_background`` shows a still image with optional depth and foreground
 maps. ``depth_video`` shows a packed color/depth video, where the left half is
 color and the right half is depth::

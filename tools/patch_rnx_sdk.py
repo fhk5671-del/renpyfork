@@ -8,6 +8,34 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SDK = Path(r"C:\Users\super\Dropbox\renpy-8.4.1-rnx-sdk")
+REFERENCE_SDK = Path(r"C:\Users\super\Dropbox\renpy-8.4.1-sdk")
+
+SYNC_SOURCE_FILES = (
+    "renpy/blobstore.py",
+    "renpy/premium_build.py",
+    "renpy/loader.py",
+    "renpy/script.py",
+    "renpy/arguments.py",
+    "renpy/config.py",
+    "renpy/common/00build.rpy",
+    "renpy/common/00motion_depth.rpy",
+    "renpy/common/00voice_manifest.rpy",
+    "renpy/translation/voice_manifest.py",
+    "renpy/update/update.py",
+    "renpy/exports/scriptexports.py",
+    "launcher/game/archiver.rpy",
+    "launcher/game/distribute.rpy",
+    "launcher/game/distribute_gui.rpy",
+    "launcher/game/front_page.rpy",
+    "launcher/game/gui7.rpy",
+    "launcher/game/mac.rpy",
+    "launcher/game/options.rpy",
+    "launcher/game/project.rpy",
+)
+
+STALE_SDK_FILES = (
+    "renpy/custom_format.py",
+)
 
 
 def read(path: Path) -> str:
@@ -21,6 +49,8 @@ def write(path: Path, text: str) -> None:
 def replace(path: Path, old: str, new: str) -> None:
     text = read(path)
     if old not in text:
+        if new in text:
+            return
         raise RuntimeError(f"Expected text not found in {path}")
     write(path, text.replace(old, new, 1))
 
@@ -29,21 +59,47 @@ def replace_all(path: Path, replacements: list[tuple[str, str]]) -> None:
     text = read(path)
     for old, new in replacements:
         if old not in text:
+            if new in text:
+                continue
             raise RuntimeError(f"Expected text not found in {path}:\n{old[:200]}")
         text = text.replace(old, new, 1)
     write(path, text)
 
 
-def copy_feature_files(sdk: Path) -> None:
-    for rel in [
-        "renpy/common/00motion_depth.rpy",
-        "renpy/common/00voice_manifest.rpy",
-        "renpy/translation/voice_manifest.py",
-    ]:
+def sync_source_files(sdk: Path) -> None:
+    for rel in SYNC_SOURCE_FILES:
         src = ROOT / rel
         dst = sdk / rel
+
+        if not src.exists():
+            raise RuntimeError(f"Source file does not exist: {src}")
+
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
+        if dst.suffix == ".rpy":
+            dst.touch()
+
+    for rel in STALE_SDK_FILES:
+        path = sdk / rel
+        if path.exists():
+            path.unlink()
+
+
+def restore_from_reference_if_needed(sdk: Path, rel: str, markers: tuple[str, ...]) -> None:
+    dst = sdk / rel
+
+    if not dst.exists():
+        return
+
+    text = read(dst)
+    if not any(marker in text for marker in markers):
+        return
+
+    src = REFERENCE_SDK / rel
+    if not src.exists():
+        raise RuntimeError(f"Reference SDK file does not exist: {src}")
+
+    shutil.copy2(src, dst)
 
 
 def main() -> None:
@@ -56,14 +112,19 @@ def main() -> None:
     if not SDK.exists():
         raise RuntimeError(f"SDK copy does not exist: {SDK}")
 
-    shutil.copy2(ROOT / "renpy" / "custom_format.py", SDK / "renpy" / "custom_format.py")
-    copy_feature_files(SDK)
+    shutil.copy2(ROOT / "renpy" / "blobstore.py", SDK / "renpy" / "blobstore.py")
+
+    restore_from_reference_if_needed(
+        SDK,
+        "renpy/__init__.py",
+        ('version_dict["name"]', 'version_dict["semver"]'),
+    )
 
     init_py = SDK / "renpy" / "__init__.py"
     replace(init_py, "    import renpy.translation.dialogue\n", "    import renpy.translation.dialogue\n    import renpy.translation.voice_manifest\n")
 
     loader = SDK / "renpy" / "loader.py"
-    replace(loader, "import renpy\n", "import renpy\nimport renpy.custom_format as custom_format\n")
+    replace(loader, "import renpy\n", "import renpy\nimport renpy.blobstore as blobstore\n")
     replace(
         loader,
         """class RPAv3ArchiveHandler(object):
@@ -167,23 +228,23 @@ archive_handlers.append(RPAv1ArchiveHandler)
     Archive handler handling this fork's RNX archives.
     \"\"\"
 
-    archive_extension = custom_format.ARCHIVE_EXTENSION
+    archive_extension = blobstore.ARCHIVE_EXTENSION
 
     @staticmethod
     def get_supported_extensions():
-        return [custom_format.ARCHIVE_EXTENSION]
+        return [blobstore.ARCHIVE_EXTENSION]
 
     @staticmethod
     def get_supported_headers():
-        return [custom_format.ARCHIVE_MAGIC]
+        return [blobstore.ARCHIVE_MAGIC]
 
     @staticmethod
     def read_index(infile):
-        l = infile.read(len(custom_format.ARCHIVE_HEADER_PLACEHOLDER))
+        l = infile.read(len(blobstore.ARCHIVE_HEADER_PLACEHOLDER))
         offset = int(l[8:24], 16)
         length = int(l[25:41], 16)
         infile.seek(offset)
-        return loads(custom_format.open_sealed(infile.read(length), custom_format.ARCHIVE_INDEX_PURPOSE))
+        return loads(blobstore.open_sealed(infile.read(length), blobstore.ARCHIVE_INDEX_PURPOSE))
 
 
 archive_handlers.append(RNXArchiveHandler)
@@ -192,35 +253,36 @@ archive_handlers.append(RNXArchiveHandler)
 # Legacy RPA handlers are intentionally not registered by this fork.
 """,
     )
-    replace(
-        loader,
-        """            if len(t) == 2:
+    if "def load_archive_member" not in read(loader):
+        replace(
+            loader,
+            """            if len(t) == 2:
                 offset, dlen = t
                 start = b\"\"
             else:
                 offset, dlen, start = t
 """,
-        """            if len(t) == 2:
+            """            if len(t) == 2:
                 offset, dlen = t
                 start = b\"\"
             elif len(t) == 3:
                 offset, dlen, _usize = t
                 with open(afn, \"rb\") as f:
                     f.seek(offset)
-                    member = custom_format.open_sealed(f.read(dlen), custom_format.ARCHIVE_MEMBER_PURPOSE)
+                    member = blobstore.open_sealed(f.read(dlen), blobstore.ARCHIVE_MEMBER_PURPOSE)
 
                 rv = RWopsIO.from_buffer(member, name=name)
                 return io.BufferedReader(rv)
             else:
                 offset, dlen, start = t
 """,
-    )
+        )
 
     archiver = SDK / "launcher" / "game" / "archiver.rpy"
     replace_all(
         archiver,
         [
-            ("    import zlib\n", "    import renpy.custom_format as custom_format\n"),
+            ("    import zlib\n", "    import renpy.blobstore as blobstore\n"),
             (
                 """            # A fixed key minimizes difference between archive versions.
             self.key = 0x42424242
@@ -228,7 +290,7 @@ archive_handlers.append(RNXArchiveHandler)
             padding = b\"RPA-3.0 XXXXXXXXXXXXXXXX XXXXXXXX\\n\"
             self.f.write(padding)
 """,
-                """            self.f.write(custom_format.ARCHIVE_HEADER_PLACEHOLDER)
+                """            self.f.write(blobstore.ARCHIVE_HEADER_PLACEHOLDER)
 """,
             ),
             (
@@ -243,7 +305,7 @@ archive_handlers.append(RNXArchiveHandler)
                 """            with open(path, \"rb\") as df:
                 data = df.read()
                 usize = len(data)
-                data = custom_format.seal(data, custom_format.ARCHIVE_MEMBER_PURPOSE)
+                data = blobstore.seal(data, blobstore.ARCHIVE_MEMBER_PURPOSE)
                 dlen = len(data)
 """,
             ),
@@ -257,22 +319,23 @@ archive_handlers.append(RNXArchiveHandler)
             self.f.write(b\"RPA-3.0 %016x %08x\\n\" % (indexoff, self.key))
 """,
                 """            indexoff = self.f.tell()
-            index = custom_format.seal(dumps(self.index, HIGHEST_PROTOCOL), custom_format.ARCHIVE_INDEX_PURPOSE)
+            index = blobstore.seal(dumps(self.index, HIGHEST_PROTOCOL), blobstore.ARCHIVE_INDEX_PURPOSE)
 
             self.f.write(index)
 
             self.f.seek(0)
-            self.f.write(custom_format.ARCHIVE_HEADER % (indexoff, len(index)))
+            self.f.write(blobstore.ARCHIVE_HEADER % (indexoff, len(index)))
 """,
             ),
         ],
     )
 
     script = SDK / "renpy" / "script.py"
-    replace(script, "import renpy\n", "import renpy\nimport renpy.custom_format as custom_format\n")
-    replace_all(
-        script,
-        [
+    replace(script, "import renpy\n", "import renpy\nimport renpy.blobstore as blobstore\n")
+    if "COMPILED_SCRIPT_EXTENSION = blobstore.COMPILED_SCRIPT_EXTENSION" not in read(script):
+        replace_all(
+            script,
+            [
             (
                 """# Change this to force a recompile of RPYC files when required, if the .rpy file exists.
 RPYC_MAGIC = b\"_2025-07-06\"
@@ -282,12 +345,13 @@ RPYC2_HEADER = b\"RENPY RPC2\"
 """,
                 """# Change this to force a recompile of compiled script files when required, if the .rpy file exists.
 RPYC_MAGIC = b\"_rnx_2026-06-17\"
+PYC_MAGIC = RPYC_MAGIC
 
 # A string at the start of each compiled script file.
-RPYC2_HEADER = custom_format.COMPILED_SCRIPT_HEADER
+RPYC2_HEADER = blobstore.COMPILED_SCRIPT_HEADER
 
-COMPILED_SCRIPT_EXTENSION = custom_format.COMPILED_SCRIPT_EXTENSION
-COMPILED_MODULE_EXTENSION = custom_format.COMPILED_MODULE_EXTENSION
+COMPILED_SCRIPT_EXTENSION = blobstore.COMPILED_SCRIPT_EXTENSION
+COMPILED_MODULE_EXTENSION = blobstore.COMPILED_MODULE_EXTENSION
 """,
             ),
             ("        for i in [\"script_version.txt\", \"script_version.rpy\", \"script_version.rpyc\"]:\n", "        for i in [\"script_version.txt\", \"script_version.rpy\", \"script_version\" + COMPILED_SCRIPT_EXTENSION]:\n"),
@@ -336,7 +400,7 @@ COMPILED_MODULE_EXTENSION = custom_format.COMPILED_MODULE_EXTENSION
             if not all_stmts[0].filename.lower().endswith(source_filename.lower()):
 """,
             ),
-            ("        data = zlib.compress(data, 3)\n", "        data = custom_format.seal(data, custom_format.COMPILED_SCRIPT_PURPOSE)\n"),
+            ("        data = zlib.compress(data, 3)\n", "        data = blobstore.seal(data, blobstore.COMPILED_SCRIPT_PURPOSE)\n"),
             (
                 """        # Legacy path.
         if header_data[: len(RPYC2_HEADER)] != RPYC2_HEADER:
@@ -355,7 +419,7 @@ COMPILED_MODULE_EXTENSION = custom_format.COMPILED_MODULE_EXTENSION
 
 """,
             ),
-            ("        return zlib.decompress(data)\n", "        return custom_format.open_sealed(data, custom_format.COMPILED_SCRIPT_PURPOSE)\n"),
+            ("        return zlib.decompress(data)\n", "        return blobstore.open_sealed(data, blobstore.COMPILED_SCRIPT_PURPOSE)\n"),
             (
                 """                if fn.endswith(\"_ren.py\"):
                     rpycfn = fullfn[:-7] + \".rpyc\"
@@ -376,8 +440,8 @@ COMPILED_MODULE_EXTENSION = custom_format.COMPILED_MODULE_EXTENSION
 """,
             ),
             ("            elif fn.endswith(\".rpyc\") or fn.endswith(\".rpymc\"):\n", "            elif fn.endswith(COMPILED_SCRIPT_EXTENSION) or fn.endswith(COMPILED_MODULE_EXTENSION):\n"),
-        ],
-    )
+            ],
+        )
 
     arguments = SDK / "renpy" / "arguments.py"
     replace_all(
@@ -458,6 +522,8 @@ sprite_motion_apply_callback: Callable[..., Any] | None = None
 sprite_motion_image_name_callback: Callable[[str, tuple[str, ...], str], str | None] | None = None
 sprite_motion_auto_nudge: bool = False
 sprite_motion_auto_nudge_tag_callback: Callable[..., str | None] | None = None
+sprite_motion_facing_callback: Callable[..., str | None] | None = None
+sprite_motion_facing_map: dict[str, Any] = {}
 sprite_motion_jump_settings: dict[str, Any] = {}
 sprite_motion_nudge_settings: dict[str, Any] = {}
 sprite_motion_layered_sprites: dict[str, Any] = {}
@@ -480,34 +546,14 @@ depth_background_video_path_callback: Callable[[str], str | None] | None = None
 """,
     )
 
+    restore_from_reference_if_needed(
+        SDK,
+        "renpy/main.py",
+        ("renpy.python.compile_cache.",),
+    )
+
     main_py = SDK / "renpy" / "main.py"
     replace(main_py, "    if renpy.exports.loadable(\"tl/None/common.rpym\") or renpy.exports.loadable(\"tl/None/common.rpymc\"):\n", "    if renpy.exports.loadable(\"tl/None/common.rpym\") or renpy.exports.loadable(\"tl/None/common\" + renpy.script.COMPILED_MODULE_EXTENSION):\n")
-
-    build = SDK / "renpy" / "common" / "00build.rpy"
-    replace(build, "    import sys, os\n", "    import sys, os\n    import renpy.custom_format as custom_format\n")
-    replace(build, "        ( \"**.rpa\", None),\n", "        ( \"**\" + custom_format.ARCHIVE_EXTENSION, None),\n")
-    replace(build, "    ]))\n\n\n    def classify_renpy", "    ]))\n\n    for ext in custom_format.LEGACY_ARTIFACT_EXTENSIONS:\n        renpy_patterns.append((\"**\" + ext, None))\n\n\n    def classify_renpy")
-    replace(build, "        If one or more files are classified with `name`, `name`.rpa is\n", "        If one or more files are classified with `name`, `name` plus this fork's archive extension is\n")
-    replace(build, "        the secret.rpa archive in the windows builds.\n", "        the secret archive in the windows builds.\n")
-
-    distribute = SDK / "launcher" / "game" / "distribute.rpy"
-    replace(distribute, "    import shutil\n", "    import shutil\n    import renpy.custom_format as custom_format\n")
-    replace(distribute, "                arcfn = arcname + \".rpa\"\n", "                arcfn = arcname + custom_format.ARCHIVE_EXTENSION\n")
-    replace(distribute, "                    (not os.path.exists(os.path.join(self.project.path, \"game\", \"script_version.rpyc\"))):\n", "                    (not os.path.exists(os.path.join(self.project.path, \"game\", \"script_version\" + renpy.script.COMPILED_SCRIPT_EXTENSION))):\n")
-    replace(distribute, "            reporter.info(_(\"Recompiling all rpy files into rpyc files...\"))\n            project.launch([ \"compile\", \"--keep-orphan-rpyc\" ], wait=True)\n", "            reporter.info(_(\"Recompiling all script files into compiled script files...\"))\n            project.launch([ \"compile\", \"--keep-orphan-rsc\" ], wait=True)\n")
-    replace(distribute, "        files = [\n            fn + \"c\" for fn in project.script_files()\n            if fn.startswith(\"game/\") and project.exists(fn + \"c\")]\n", "        def compiled_script_filename(fn):\n            if fn.endswith(\"_ren.py\"):\n                return fn[:-7] + renpy.script.COMPILED_SCRIPT_EXTENSION\n            elif fn.endswith(\".rpym\"):\n                return fn[:-5] + renpy.script.COMPILED_MODULE_EXTENSION\n            else:\n                return fn[:-4] + renpy.script.COMPILED_SCRIPT_EXTENSION\n\n        files = [\n            compiled_script_filename(fn) for fn in project.script_files()\n            if fn.startswith(\"game/\") and project.exists(compiled_script_filename(fn))]\n")
-    replace(distribute, "        ap = renpy.arguments.ArgumentParser(\"Back-ups all rpyc files into old-game directory.\")\n", "        ap = renpy.arguments.ArgumentParser(\"Backs up all compiled script files into old-game directory.\")\n")
-
-    options = SDK / "launcher" / "game" / "options.rpy"
-    replace(options, "init python:\n\n    # We're building Ren'Py tonight.", "init python:\n\n    import renpy.custom_format as custom_format\n\n    # We're building Ren'Py tonight.")
-    replace(options, "        .pyo, .rpyc, .rpycm, and .rpyb go into binary, everything\n", "        .pyo, compiled script files, and .rpyb go into binary, everything\n")
-    replace(options, "        build.classify_renpy(pattern + \"/**.rpyc\", binary)\n        build.classify_renpy(pattern + \"/**.rpymc\", binary)\n", "        build.classify_renpy(pattern + \"/**\" + renpy.script.COMPILED_SCRIPT_EXTENSION, binary)\n        build.classify_renpy(pattern + \"/**\" + renpy.script.COMPILED_MODULE_EXTENSION, binary)\n\n        for ext in custom_format.LEGACY_ARTIFACT_EXTENSIONS:\n            build.classify_renpy(pattern + \"/**\" + ext, None)\n")
-
-    project = SDK / "launcher" / "game" / "project.rpy"
-    replace(project, "                    self.launch([\"compile\", \"--keep-orphan-rpyc\" ], wait=True)\n", "                    self.launch([\"compile\", \"--keep-orphan-rsc\" ], wait=True)\n")
-
-    front_page = SDK / "launcher" / "game" / "front_page.rpy"
-    replace(front_page, "        interface.processing(_(\"Recompiling all rpy files into rpyc files...\"))\n", "        interface.processing(_(\"Recompiling all script files into compiled script files...\"))\n")
 
     update = SDK / "renpy" / "update" / "update.py"
     replace(update, """    def write_padding(self):
@@ -533,6 +579,8 @@ depth_background_video_path_callback: Callable[[str], str | None] | None = None
 
     exports = SDK / "renpy" / "exports" / "scriptexports.py"
     replace(exports, "    name.rpym or name.rpymc. If a .rpym file exists, and is newer than the\n    corresponding .rpymc file, it is loaded and a new .rpymc file is created.\n", "    name.rpym or a compiled module file. If a .rpym file exists, and is newer than the\n    corresponding compiled module file, it is loaded and a new compiled module file is created.\n")
+
+    sync_source_files(SDK)
 
     print(f"Patched SDK copy: {SDK}")
 
